@@ -4,7 +4,7 @@ import { api } from '@/lib/db';
 import { Button } from '@/components/ui/Buttons';
 import { Card } from '@/components/ui/Cards';
 import { formatRupiah } from '@/lib/utils';
-import { Printer, MessageCircle, ArrowLeft, CheckCircle, Clock } from 'lucide-react';
+import { Printer, MessageCircle, ArrowLeft, CheckCircle, Clock, X } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -15,6 +15,7 @@ const OrderDetail = () => {
   const [order, setOrder] = useState(null);
   const [storeProfile, setStoreProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showPreview, setShowPreview] = useState(false); // ← state baru
 
   // ================= LOAD DATA =================
   useEffect(() => {
@@ -72,18 +73,18 @@ const OrderDetail = () => {
 
   const isPaid = order.payment?.status === 'paid';
 
-  // ================= PRINT RAWBT (STRUK PROFESIONAL) =================
-  const handlePrintRawBT = () => {
-    const formatLine = (label, value) => {
-      const maxWidth = 32;
-      const space = maxWidth - label.length - value.length;
-      return label + ' '.repeat(Math.max(0, space)) + value;
+  // ================= GENERATE RECEIPT TEXT (dipake preview + print) =================
+  const generateReceiptText = () => {
+    const WIDTH = 32;
+    const rp = (n) => {
+      const num = Math.round(Number(n || 0));
+      const formatted = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+      return `Rp${formatted}`;
     };
-    const center = (text) => {
-      const spaces = Math.max(0, Math.floor((32 - text.length) / 2));
-      return ' '.repeat(spaces) + text;
-    };
-    const dashLine = '-'.repeat(32);
+
+    const formatLine = (l, r) => l + ' '.repeat(Math.max(0, WIDTH - l.length - r.length)) + r;
+    const center = (t) => ' '.repeat(Math.max(0, Math.floor((WIDTH - t.length) / 2))) + t;
+    const dash = '-'.repeat(WIDTH);
     const dateStr = order.date ? format(parseISO(order.date), 'dd/MM/yy HH:mm') : '-';
 
     const payMethod = order.payment?.method?.toUpperCase() || 'CASH';
@@ -92,40 +93,53 @@ const OrderDetail = () => {
     let paymentDetails = '';
     if (order.payment?.method === 'cash') {
       paymentDetails =
-        `${formatLine('BAYAR (TUNAI)', formatRupiah(order.payment.paidAmount))}\n` +
-        `${formatLine('KEMBALI', formatRupiah(order.payment.change))}`;
+        `${formatLine('BAYAR (TUNAI)', rp(order.payment.paidAmount))}\n` +
+        `${formatLine('KEMBALI', rp(order.payment.change))}`;
     } else {
       paymentDetails =
         `${formatLine('METODE', payMethod)}\n` +
         `${formatLine('STATUS', payStatus)}`;
     }
 
-    const receiptText = 
-`[C]<b>${storeProfile?.name || 'LAUNDRY'}</b>
-[C]${storeProfile?.address || '-'}
-[C]${storeProfile?.phone || '-'}
-${dashLine}
+    return `${center((storeProfile?.name || 'LAUNDRY').toUpperCase())}
+${center(storeProfile?.address || '-')}
+${center(storeProfile?.phone || '-')}
+${dash}
 No. Nota : ${order.invoiceNumber}
 Tanggal  : ${dateStr}
-Plg      : ${order.customerName || 'Umum'}
-${dashLine}
+Plg      : ${(order.customerName || 'Umum').toUpperCase().substring(0, 20)}
+${dash}
 ${order.items.map(item => {
-  return `${item.name}\n` + formatLine(`${item.qty}x ${item.price.toLocaleString()}`, (item.price * item.qty).toLocaleString());
+  const math = `${item.qty}x ${rp(item.price)}`;
+  const total = rp(item.price * item.qty);
+  return `${item.name.substring(0, WIDTH)}\n${formatLine(math, total)}`;
 }).join('\n')}
-${dashLine}
-${formatLine('SUBTOTAL', formatRupiah(order.subtotal || order.total))}
-${order.discount > 0 ? formatLine('DISKON', `-${formatRupiah(order.discount)}`) : ''}
-[L]<b>${formatLine('TOTAL TAGIHAN', formatRupiah(order.total))}</b>
-${dashLine}
+${dash}
+${formatLine('SUBTOTAL', rp(order.subtotal || order.total))}
+${order.discount > 0 ? formatLine('DISKON', `-${rp(order.discount)}`) : ''}
+${formatLine('TOTAL TAGIHAN', rp(order.total))}
+${dash}
 ${paymentDetails}
-${dashLine}
-[C]${order.notes ? `Catatan: ${order.notes}` : ''}
-[C]
-[C]Terima Kasih
-`;
+${dash}
+${order.notes ? `Catatan:\n${order.notes}` : ''}
 
+${center('SYARAT & KETENTUAN:')}
+- Wajib bawa nota saat ambil
+- Promo 3k berlaku min 3kg
+- Komplain max 1x24 jam
+- Barang >30 hari hangus
+
+${center('BAJU RAPI, HATI SANTUY.')}
+${center('TERIMA KASIH')}
+`;
+  };
+
+  // ================= PRINT RAWBT =================
+  const handlePrintRawBT = () => {
+    const receiptText = generateReceiptText();
     const base64Data = btoa(receiptText);
     window.location.href = `rawbt:base64,${base64Data}`;
+    setShowPreview(false); // tutup modal setelah print
   };
 
   // ================= SEND WHATSAPP =================
@@ -317,7 +331,13 @@ ${dashLine}
                   </div>
                   <div className="flex justify-between">
                     <span>Status:</span>
-                    <span className={isPaid ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                    <span
+                      className={
+                        isPaid
+                          ? 'text-green-600 font-bold'
+                          : 'text-red-600 font-bold'
+                      }
+                    >
                       {isPaid ? 'LUNAS' : 'PENDING'}
                     </span>
                   </div>
@@ -338,7 +358,7 @@ ${dashLine}
           <Button
             variant="outline"
             className="flex-1 gap-2 border-primary text-primary hover:bg-primary/5"
-            onClick={handlePrintRawBT}
+            onClick={() => setShowPreview(true)} // ← buka preview dulu
           >
             <Printer size={18} /> Cetak
           </Button>
@@ -350,6 +370,60 @@ ${dashLine}
           </Button>
         </div>
       </div>
+
+      {/* ================= MODAL PREVIEW STRUK ================= */}
+      {showPreview && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowPreview(false)}
+          />
+
+          {/* Modal Panel — slide up dari bawah */}
+          <div className="relative w-full max-w-md bg-white rounded-t-3xl shadow-xl animate-slide-up">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <h2 className="text-base font-bold">Preview Struk</h2>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+
+            {/* Divider */}
+            <div className="mx-5 border-t border-gray-100" />
+
+            {/* Konten Struk — scrollable */}
+            <div className="mx-5 mt-4 mb-4 max-h-[55vh] overflow-y-auto">
+              <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-4">
+                <pre className="text-[11px] leading-[1.5] text-gray-800 whitespace-pre font-mono tracking-tight">
+                  {generateReceiptText()}
+                </pre>
+              </div>
+            </div>
+
+            {/* Tombol Aksi */}
+            <div className="px-5 pb-8 pt-2 flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 border-gray-200 text-gray-600 hover:bg-gray-50"
+                onClick={() => setShowPreview(false)}
+              >
+                Tutup
+              </Button>
+              <Button
+                className="flex-1 gap-2 bg-primary hover:bg-primary/90 shadow-primary/30"
+                onClick={handlePrintRawBT}
+              >
+                <Printer size={16} /> Cetak Sekarang
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
