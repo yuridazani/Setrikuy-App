@@ -31,9 +31,11 @@ const Login = () => {
 
       <div className="w-full max-w-sm relative z-10">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center h-20 w-20 rounded-[2rem] bg-black text-white mb-6 shadow-2xl shadow-primary/20">
-            <span className="font-extrabold text-3xl">S</span>
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="Logo Setrikuy" 
+            className="h-24 w-auto mx-auto mb-6 drop-shadow-xl" 
+          />
           <h1 className="text-3xl font-black text-text-main mb-2">SETRIKUY</h1>
           <p className="text-text-muted">Aplikasi Kasir Laundry Pintar</p>
         </div>

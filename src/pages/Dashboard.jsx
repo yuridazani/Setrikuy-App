@@ -62,7 +62,7 @@ const Dashboard = () => {
       </header>
 
       {/* Card Omset */}
-      <div className="relative overflow-hidden rounded-[2rem] bg-primary p-6 text-white shadow-xl shadow-primary/20">
+      <div className="relative overflow-hidden rounded-4xl bg-primary p-6 text-white shadow-xl shadow-primary/20">
         <div className="absolute top-0 right-0 -mt-4 -mr-4 h-32 w-32 rounded-full bg-white/10 blur-2xl"></div>
         <div className="relative z-10">
           <div className="flex items-center gap-2 text-primary-soft/80 mb-2">

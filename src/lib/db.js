@@ -42,7 +42,8 @@ export const api = {
     getAll: async () => {
       const snapshot = await getDocs(collection(db, 'orders'));
       return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    }
+    },
+    delete: async (id) => await deleteDoc(doc(db, 'orders', id)),
   },
 
   // --- PENGATURAN ---

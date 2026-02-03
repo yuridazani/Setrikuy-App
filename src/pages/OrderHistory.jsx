@@ -1,62 +1,124 @@
+import { useState } from 'react';
 import { useRealtime } from '@/lib/hooks'; // Hook Firebase
+import { api } from '@/lib/db'; // API Wrapper untuk Delete
 import { Card } from '@/components/ui/Cards';
 import { formatRupiah } from '@/lib/utils';
-import { format, parseISO } from 'date-fns'; // Tambah parseISO untuk aman
+import { format, parseISO } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Search } from 'lucide-react';
-import { orderBy } from 'firebase/firestore'; // Untuk sorting
+import { Search, Trash2 } from 'lucide-react';
+import { orderBy } from 'firebase/firestore';
+import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const OrderHistory = () => {
-  // Ambil data orders realtime, urutkan berdasarkan tanggal (descending)
+  // Ambil data orders realtime, urutkan tanggal descending
   const orders = useRealtime('orders', [orderBy('date', 'desc')]);
   const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // LOGIC DELETE ORDER
+  const handleDelete = async (e, orderId) => {
+    e.stopPropagation(); // Mencegah klik card saat klik tombol hapus
+    if (confirm("Yakin ingin menghapus riwayat order ini? Data akan hilang permanen.")) {
+      try {
+        await api.orders.delete(orderId); // Panggil API delete (perlu ditambahkan di db.js jika belum ada)
+        toast.success("Order berhasil dihapus");
+      } catch (error) {
+        console.error(error);
+        toast.error("Gagal menghapus order");
+      }
+    }
+  };
+
+  // LOGIC FILTER PENCARIAN (NOTA & NAMA)
+  const filteredOrders = orders.filter(order => {
+    const term = searchTerm.toLowerCase();
+    const invoice = order.invoiceNumber?.toLowerCase() || '';
+    const customer = order.customerName?.toLowerCase() || '';
+    
+    return invoice.includes(term) || customer.includes(term);
+  });
 
   return (
     <div className="p-6 pb-32 animate-slide-up space-y-6">
       <h1 className="text-2xl font-extrabold text-text-main">Riwayat Order</h1>
 
-      {/* Search Bar Sederhana */}
-      <div className="bg-white p-3 rounded-2xl flex items-center gap-3 shadow-sm border border-gray-100">
+      {/* SEARCH BAR (Cari Nota / Nama) */}
+      <div className="bg-white p-3 rounded-2xl flex items-center gap-3 shadow-sm border border-gray-100 sticky top-0 z-10">
         <Search className="text-gray-400" size={20} />
         <input 
           type="text" 
-          placeholder="Cari nota atau nama..." 
+          placeholder="Cari nama atau no. nota..." 
           className="bg-transparent outline-none w-full text-sm font-medium"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
         />
+        {searchTerm && (
+            <button onClick={() => setSearchTerm('')} className="text-gray-400 text-xs font-bold">Clear</button>
+        )}
       </div>
 
-      <div className="space-y-4">
-        {!orders?.length && (
-          <div className="text-center py-10 text-gray-400">Belum ada transaksi</div>
+      <div className="space-y-3">
+        {filteredOrders.length === 0 && (
+          <div className="text-center py-10 text-gray-400">
+            {orders.length === 0 ? "Belum ada transaksi" : "Pencarian tidak ditemukan"}
+          </div>
         )}
 
-        {orders?.map((order) => (
-          <div key={order.id} onClick={() => navigate(`/orders/${order.id}`)}>
-            <Card className="p-5 active:scale-[0.98] transition-transform cursor-pointer border-transparent hover:border-primary/20">
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded-lg">
-                    {order.invoiceNumber}
-                  </span>
-                  <p className="text-xs text-text-muted mt-2">
-                    {/* Gunakan parseISO karena tanggal di Firebase string */}
-                    {order.date ? format(parseISO(order.date), 'dd MMM yyyy, HH:mm') : '-'}
-                  </p>
+        <AnimatePresence>
+          {filteredOrders.map((order) => (
+            <motion.div 
+                key={order.id} 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -100 }}
+                layout
+                onClick={() => navigate(`/orders/${order.id}`)}
+            >
+              <Card className="p-4 active:scale-[0.98] transition-transform cursor-pointer border-transparent hover:border-primary/20 relative group">
+                
+                {/* TOMBOL HAPUS (Muncul di pojok kanan atas) */}
+                <button 
+                    onClick={(e) => handleDelete(e, order.id)}
+                    className="absolute top-2 right-2 p-2 bg-red-50 text-red-500 rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity hover:bg-red-100 z-10"
+                >
+                    <Trash2 size={16} />
+                </button>
+
+                <div className="flex justify-between items-start mb-2 pr-8"> {/* pr-8 biar gak ketutup tombol hapus */}
+                  <div>
+                    {/* INVOICE NUMBER */}
+                    <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-1 rounded-md tracking-wider">
+                      {order.invoiceNumber}
+                    </span>
+                    
+                    {/* NAMA PELANGGAN (Ditampilkan Besar) */}
+                    <h3 className="font-bold text-lg text-text-main mt-2 leading-tight">
+                        {order.customerName || "Pelanggan Umum"}
+                    </h3>
+                    
+                    {/* TANGGAL */}
+                    <p className="text-xs text-text-muted mt-1">
+                      {order.date ? format(parseISO(order.date), 'dd MMM yyyy, HH:mm') : '-'}
+                    </p>
+                  </div>
                 </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${
-                  order.status === 'selesai' ? 'bg-green-100 text-green-700' : 'bg-orange/10 text-orange'
-                }`}>
-                  {order.status}
+                
+                <div className="flex justify-between items-end border-t border-dashed border-gray-100 pt-3 mt-2">
+                  <div className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
+                    order.status === 'selesai' ? 'bg-green-100 text-green-700' : 'bg-orange/10 text-orange'
+                  }`}>
+                    {order.status}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">Total</p>
+                    <p className="text-lg font-black text-text-main">{formatRupiah(order.total)}</p>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="flex justify-between items-end border-t border-dashed border-gray-100 pt-3 mt-2">
-                <p className="text-sm font-medium text-text-muted">Total Belanja</p>
-                <p className="text-lg font-black text-text-main">{formatRupiah(order.total)}</p>
-              </div>
-            </Card>
-          </div>
-        ))}
+              </Card>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );
