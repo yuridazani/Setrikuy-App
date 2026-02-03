@@ -17,15 +17,20 @@ import {
   CreditCard,
   Banknote,
   QrCode,
+  Scale,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const PosPage = () => {
-  const services = useRealtime('services');
+  const servicesRaw = useRealtime('services');
   const customers = useRealtime('customers');
+  const services = servicesRaw?.filter((s) => s.isActive !== false);
 
   const [cart, setCart] = useState([]);
   const [isSummaryOpen, setSummaryOpen] = useState(false);
+
+  // ✅ MIN WEIGHT SWITCH (DEFAULT ON)
+  const [useMinWeight, setUseMinWeight] = useState(true);
 
   // --- CUSTOMER ---
   const [selectedCustomer, setSelectedCustomer] = useState(null);
@@ -41,7 +46,7 @@ const PosPage = () => {
 
   // --- PAYMENT ---
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('cash'); // cash | transfer | ewallet | qris
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [cashAmount, setCashAmount] = useState('');
   const [paymentDetails, setPaymentDetails] = useState({
     bank: 'BCA',
@@ -51,7 +56,7 @@ const PosPage = () => {
     refNumber: '',
   });
 
-  // --- CART LOGIC ---
+  // ================= CART LOGIC =================
   const addToCart = (service) => {
     setCart((prev) => {
       const existing = prev.find((item) => item.id === service.id);
@@ -75,12 +80,21 @@ const PosPage = () => {
     );
   };
 
-  const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
+  // ================= TOTAL LOGIC (WITH SWITCH) =================
+  const calculateItemTotal = (item) => {
+    let billedQty = item.qty;
+    if (useMinWeight && item.unit === 'kg' && item.qty < 3 && item.qty > 0) {
+      billedQty = 3;
+    }
+    return item.price * billedQty;
+  };
+
+  const subtotal = cart.reduce((acc, item) => acc + calculateItemTotal(item), 0);
   const discountAmount =
     discountType === 'percent' ? (subtotal * discount) / 100 : discount;
   const finalTotal = Math.max(0, subtotal - discountAmount);
 
-  // --- FLOW ---
+  // ================= FLOW =================
   const openPaymentModal = () => {
     if (cart.length === 0) return toast.error('Keranjang kosong!');
     if (!selectedCustomer) {
@@ -111,19 +125,32 @@ const PosPage = () => {
       status = 'pending';
     }
 
+    // ✅ SIMPAN ITEM DENGAN INFO (Min 3kg jika aktif)
+    const itemsToSave = cart.map((item) => {
+      const isMinApplied =
+        useMinWeight && item.unit === 'kg' && item.qty < 3;
+      const billedQty = isMinApplied ? 3 : item.qty;
+
+      return {
+        ...item,
+        qty: billedQty,
+        realQty: item.qty,
+        name: isMinApplied ? `${item.name} (Min 3kg)` : item.name,
+      };
+    });
+
     try {
       await api.orders.add({
         invoiceNumber: generateInvoiceNumber(),
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
         customerPhone: selectedCustomer.phone,
-        items: cart,
+        items: itemsToSave,
         subtotal,
         discount: discountAmount,
         total: finalTotal,
         notes,
         date: new Date().toISOString(),
-
         payment: {
           method: paymentMethod,
           status,
@@ -131,7 +158,6 @@ const PosPage = () => {
           change,
           details: paymentDetails,
         },
-
         status: 'antrian',
         paymentStatus: status,
       });
@@ -142,10 +168,12 @@ const PosPage = () => {
           : 'Disimpan! Menunggu pembayaran.'
       );
 
+      // RESET
       setCart([]);
       setSelectedCustomer(null);
       setDiscount(0);
       setNotes('');
+      setUseMinWeight(true); // reset ke default aman
       setSummaryOpen(false);
       setPaymentModalOpen(false);
     } catch (error) {
@@ -265,40 +293,81 @@ const PosPage = () => {
                 </Button>
               </div>
 
+              {/* ===== SWITCH MIN 3KG ===== */}
+              <div className="mb-4 bg-blue-50 p-3 rounded-xl flex items-center justify-between border border-blue-100">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <Scale size={20} />
+                  <div>
+                    <p className="font-bold text-sm">Minimal 3KG</p>
+                    <p className="text-[10px] opacity-70">
+                      Otomatis bulatkan ke 3kg
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setUseMinWeight(!useMinWeight)}
+                  className={`w-12 h-7 rounded-full p-1 transition-all ${
+                    useMinWeight ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 bg-white rounded-full shadow-md transition-all ${
+                      useMinWeight ? 'ml-5' : 'ml-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
               {/* Cart Items */}
               <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                {cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl"
-                  >
-                    <div>
-                      <h4 className="font-bold text-text-main text-sm">
-                        {item.name}
-                      </h4>
-                      <p className="text-xs text-text-muted">
-                        {formatRupiah(item.price)}
-                      </p>
+                {cart.map((item) => {
+                  const isMinApplied =
+                    useMinWeight && item.unit === 'kg' && item.qty < 3 && item.qty > 0;
+                  const totalHargaItem = calculateItemTotal(item);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between bg-gray-50 p-3 rounded-2xl"
+                    >
+                      <div>
+                        <h4 className="font-bold text-text-main text-sm">
+                          {item.name}
+                          {isMinApplied && (
+                            <span className="text-[10px] text-red-500 ml-1 font-bold">
+                              (Min 3kg)
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-xs text-text-muted">
+                          {formatRupiah(item.price)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
+                          <button
+                            onClick={() => updateQty(item.id, -1)}
+                            className="h-8 w-8 flex items-center justify-center bg-gray-100 rounded-lg font-bold"
+                          >
+                            -
+                          </button>
+                          <span className="font-bold w-4 text-center text-sm">
+                            {item.qty}
+                          </span>
+                          <button
+                            onClick={() => updateQty(item.id, 1)}
+                            className="h-8 w-8 flex items-center justify-center bg-primary text-white rounded-lg font-bold"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="font-bold text-sm min-w-[60px] text-right">
+                          {formatRupiah(totalHargaItem)}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-                      <button
-                        onClick={() => updateQty(item.id, -1)}
-                        className="h-8 w-8 flex items-center justify-center bg-gray-100 rounded-lg font-bold"
-                      >
-                        -
-                      </button>
-                      <span className="font-bold w-4 text-center text-sm">
-                        {item.qty}
-                      </span>
-                      <button
-                        onClick={() => updateQty(item.id, 1)}
-                        className="h-8 w-8 flex items-center justify-center bg-primary text-white rounded-lg font-bold"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Discount & Notes */}
@@ -511,7 +580,7 @@ const PosPage = () => {
                     </div>
                     <input
                       className="w-full p-3 bg-white border border-gray-200 rounded-xl"
-                      placeholder="Nomor / Nama Akun (Opsional)"
+                      placeholder="Nomor / Nama Akun"
                       value={paymentDetails.walletName}
                       onChange={(e) =>
                         setPaymentDetails({
@@ -523,23 +592,26 @@ const PosPage = () => {
                   </div>
                 )}
 
-                {/* 4. QRIS (MANUAL STIKER) */}
+                {/* QRIS */}
                 {paymentMethod === 'qris' && (
                   <div className="space-y-4 animate-slide-up text-center">
                     <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-800 text-sm">
-                        <p className="font-bold mb-1">🔍 Scan Manual</p>
-                        <p>Silakan tunjukkan <b>Stiker QRIS</b> toko kepada pelanggan.</p>
+                      <p className="font-bold mb-1">🔍 Scan Manual</p>
+                      <p>
+                        Tunjukkan <b>Stiker QRIS</b> toko.
+                      </p>
                     </div>
-                    
-                    <div className="py-2">
-                        <p className="text-xs text-gray-400 mb-2">Jika sudah scan, masukkan No. Ref (Opsional)</p>
-                        <input 
-                            className="w-full p-3 bg-white border border-gray-200 rounded-xl text-center focus:ring-2 focus:ring-primary outline-none font-mono font-bold" 
-                            placeholder="Contoh: 123456" 
-                            value={paymentDetails.refNumber} 
-                            onChange={e => setPaymentDetails({...paymentDetails, refNumber: e.target.value})} 
-                        />
-                    </div>
+                    <input
+                      className="w-full p-3 bg-white border border-gray-200 rounded-xl text-center font-bold"
+                      placeholder="No. Ref (Opsional)"
+                      value={paymentDetails.refNumber}
+                      onChange={(e) =>
+                        setPaymentDetails({
+                          ...paymentDetails,
+                          refNumber: e.target.value,
+                        })
+                      }
+                    />
                   </div>
                 )}
               </div>
@@ -549,15 +621,24 @@ const PosPage = () => {
                 className="w-full h-14 text-lg shadow-xl shadow-primary/20"
               >
                 {paymentMethod === 'cash'
-                  ? `Bayar & Terima ${formatRupiah(
-                      Number(cashAmount || 0)
-                    )}`
+                  ? `Bayar & Terima ${formatRupiah(Number(cashAmount || 0))}`
                   : 'Simpan Transaksi'}
               </Button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CustomerModal
+        isOpen={isCustomerModalOpen}
+        onClose={() => setCustomerModalOpen(false)}
+        onSelect={(c) => {
+          setSelectedCustomer(c);
+          setCustomerModalOpen(false);
+        }}
+        customers={customers}
+        onAdd={async (newC) => await api.customers.add(newC)}
+      />
 
       {/* ================= DISCOUNT MODAL ================= */}
       <AnimatePresence>
@@ -623,125 +704,89 @@ const PosPage = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ================= CUSTOMER MODAL ================= */}
-      <AnimatePresence>
-        {isCustomerModalOpen && (
-          <CustomerModal
-            onClose={() => setCustomerModalOpen(false)}
-            onSelect={(cust) => {
-              setSelectedCustomer(cust);
-              setCustomerModalOpen(false);
-            }}
-            customers={customers}
-            onAdd={async (newC) => {
-              const id = await api.customers.add(newC);
-              return id;
-            }}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 };
 
 // ================= CUSTOMER MODAL =================
-const CustomerModal = ({ onClose, onSelect, customers, onAdd }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isAdding, setIsAdding] = useState(false);
-  const [newCust, setNewCust] = useState({ name: '', phone: '' });
-
+const CustomerModal = ({ isOpen, onClose, onSelect, customers, onAdd }) => {
+  if (!isOpen) return null;
+  const [search, setSearch] = useState('');
+  const [isAdd, setIsAdd] = useState(false);
+  const [newC, setNewC] = useState({ name: '', phone: '' });
   const filtered = customers?.filter((c) =>
-    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+    c.name.toLowerCase().includes(search.toLowerCase())
   );
-
-  const handleAdd = async () => {
-    if (!newCust.name) return;
-    const id = await onAdd(newCust);
-    onSelect({ ...newCust, id });
-    toast.success('Pelanggan baru dibuat!');
+  const saveNew = async () => {
+    if (!newC.name) return;
+    const id = await onAdd(newC);
+    onSelect({ ...newC, id });
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-    >
-      <div className="bg-white w-full max-w-sm rounded-4xl p-6 max-h-[80vh] flex flex-col shadow-2xl">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-lg">Pilih Pelanggan</h3>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X size={20} />
-          </Button>
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl max-h-[80vh] flex flex-col">
+        <div className="flex justify-between mb-4">
+          <h3 className="font-bold">Pilih Pelanggan</h3>
+          <button onClick={onClose}>
+            <X />
+          </button>
         </div>
-
-        <div className="bg-gray-50 p-3 rounded-xl flex items-center gap-2 mb-4 border border-gray-200">
-          <Search size={18} className="text-gray-400" />
-          <input
-            className="bg-transparent outline-none w-full text-sm"
-            placeholder="Cari nama..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {filtered?.map((c) => (
-            <div
-              key={c.id}
-              onClick={() => onSelect(c)}
-              className="p-3 hover:bg-primary/5 rounded-xl cursor-pointer border border-transparent hover:border-primary/20 transition-all"
-            >
-              <p className="font-bold text-text-main">{c.name}</p>
-              <p className="text-xs text-text-muted">{c.phone || '-'}</p>
+        {!isAdd ? (
+          <>
+            <input
+              placeholder="Cari..."
+              className="w-full p-3 bg-gray-50 rounded-xl mb-2"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="flex-1 overflow-y-auto space-y-2">
+              {filtered?.map((c) => (
+                <div
+                  key={c.id}
+                  onClick={() => onSelect(c)}
+                  className="p-3 bg-gray-50 rounded-xl font-bold text-sm cursor-pointer hover:bg-primary/10"
+                >
+                  {c.name}
+                </div>
+              ))}
             </div>
-          ))}
-          {filtered?.length === 0 && !isAdding && (
-            <p className="text-center text-gray-400 text-sm py-4">
-              Tidak ditemukan
-            </p>
-          )}
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-gray-100">
-          {isAdding ? (
-            <div className="space-y-3 animate-slide-up">
-              <input
-                placeholder="Nama Pelanggan"
-                className="w-full p-3 bg-gray-50 rounded-xl text-sm border border-gray-200"
-                autoFocus
-                value={newCust.name}
-                onChange={(e) =>
-                  setNewCust({ ...newCust, name: e.target.value })
-                }
-              />
-              <input
-                placeholder="No HP (Opsional)"
-                className="w-full p-3 bg-gray-50 rounded-xl text-sm border border-gray-200"
-                type="tel"
-                value={newCust.phone}
-                onChange={(e) =>
-                  setNewCust({ ...newCust, phone: e.target.value })
-                }
-              />
-              <Button onClick={handleAdd} className="w-full">
-                Simpan & Pilih
-              </Button>
-            </div>
-          ) : (
             <Button
+              onClick={() => setIsAdd(true)}
               variant="outline"
-              className="w-full border-dashed"
-              onClick={() => setIsAdding(true)}
+              className="mt-4 border-dashed w-full"
             >
-              + Pelanggan Baru
+              + Baru
             </Button>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="space-y-3">
+            <input
+              placeholder="Nama"
+              className="w-full p-3 bg-gray-50 rounded-xl"
+              value={newC.name}
+              onChange={(e) => setNewC({ ...newC, name: e.target.value })}
+            />
+            <input
+              placeholder="HP"
+              className="w-full p-3 bg-gray-50 rounded-xl"
+              value={newC.phone}
+              onChange={(e) => setNewC({ ...newC, phone: e.target.value })}
+            />
+            <Button onClick={saveNew} className="w-full">
+              Simpan
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setIsAdd(false)}
+              className="w-full"
+            >
+              Kembali
+            </Button>
+          </div>
+        )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 

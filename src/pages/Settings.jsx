@@ -4,14 +4,13 @@ import { useRealtime } from '@/lib/hooks';
 import { Button } from '@/components/ui/Buttons';
 import { Card } from '@/components/ui/Cards';
 import { toast } from 'sonner';
-import { Store, Tag, Save, Trash2, Plus, CloudCheck, LogOut } from 'lucide-react';
+import { Store, Tag, Save, Trash2, Plus, CloudCheck, LogOut, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('toko');
   const navigate = useNavigate();
 
-  // LOGOUT FUNCTION
   const handleLogout = () => {
     if (confirm('Yakin mau keluar aplikasi?')) {
       localStorage.removeItem('isLoggedIn');
@@ -24,7 +23,6 @@ const Settings = () => {
     <div className="p-6 pb-32 animate-slide-up space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-extrabold text-text-main">Pengaturan</h1>
-        {/* LOGOUT MINI BUTTON */}
         <Button
           size="sm"
           variant="danger"
@@ -35,21 +33,19 @@ const Settings = () => {
         </Button>
       </div>
 
-      {/* Tab Navigation */}
+      {/* Tabs */}
       <div className="flex p-1 bg-white border border-gray-200 rounded-2xl overflow-x-auto no-scrollbar">
         <TabButton active={activeTab === 'toko'} onClick={() => setActiveTab('toko')} icon={Store} label="Profil Toko" />
         <TabButton active={activeTab === 'layanan'} onClick={() => setActiveTab('layanan')} icon={Tag} label="Layanan" />
         <TabButton active={activeTab === 'data'} onClick={() => setActiveTab('data')} icon={CloudCheck} label="Data Cloud" />
       </div>
 
-      {/* Tab Content */}
       <div className="min-h-[50vh]">
         {activeTab === 'toko' && <StoreProfileSettings />}
         {activeTab === 'layanan' && <ServicesSettings />}
         {activeTab === 'data' && (
           <div className="space-y-6">
             <DataInfo />
-            {/* LOGOUT BIG BUTTON */}
             <Button
               onClick={handleLogout}
               className="w-full bg-red-500 hover:bg-red-600 text-white gap-2 shadow-red-200"
@@ -63,7 +59,7 @@ const Settings = () => {
   );
 };
 
-// --- SUB COMPONENTS ---
+// ================= SUB COMPONENTS =================
 
 const TabButton = ({ active, onClick, icon: Icon, label }) => (
   <button
@@ -76,6 +72,7 @@ const TabButton = ({ active, onClick, icon: Icon, label }) => (
   </button>
 );
 
+// ---------- PROFIL TOKO ----------
 const StoreProfileSettings = () => {
   const [profile, setProfile] = useState({
     name: '',
@@ -97,8 +94,8 @@ const StoreProfileSettings = () => {
   const handleSave = async () => {
     try {
       await api.settings.save('store_profile', profile);
-      toast.success('Profil toko berhasil disimpan (Online)!');
-    } catch (e) {
+      toast.success('Profil toko berhasil disimpan!');
+    } catch {
       toast.error('Gagal menyimpan profil');
     }
   };
@@ -144,6 +141,7 @@ const StoreProfileSettings = () => {
   );
 };
 
+// ---------- LAYANAN ----------
 const ServicesSettings = () => {
   const services = useRealtime('services');
 
@@ -154,6 +152,7 @@ const ServicesSettings = () => {
     unit: 'kg',
     duration: 24,
     type: 'kiloan',
+    isActive: true,
   });
 
   const handleAdd = async () => {
@@ -163,11 +162,18 @@ const ServicesSettings = () => {
       ...newService,
       price: parseInt(newService.price),
       duration: parseInt(newService.duration),
+      isActive: true,
     });
 
     setIsAdding(false);
-    setNewService({ name: '', price: '', unit: 'kg', duration: 24, type: 'kiloan' });
+    setNewService({ name: '', price: '', unit: 'kg', duration: 24, type: 'kiloan', isActive: true });
     toast.success('Layanan ditambahkan');
+  };
+
+  const handleToggleActive = async (service) => {
+    const newStatus = service.isActive === false ? true : false; // undefined dianggap aktif
+    await api.services.update(service.id, { isActive: newStatus });
+    toast.success(newStatus ? 'Layanan diaktifkan' : 'Layanan dinonaktifkan');
   };
 
   const handleDelete = async (id) => {
@@ -245,22 +251,54 @@ const ServicesSettings = () => {
 
       {/* List Layanan */}
       <div className="space-y-3">
-        {services?.map(service => (
-          <Card key={service.id} className="p-4 flex justify-between items-center">
-            <div>
-              <h4 className="font-bold text-text-main">{service.name}</h4>
-              <p className="text-xs text-text-muted">
-                Rp {service.price.toLocaleString()} / {service.unit} • {service.duration} Jam
-              </p>
-            </div>
-            <button
-              onClick={() => handleDelete(service.id)}
-              className="p-2 text-danger bg-danger/10 rounded-lg hover:bg-danger hover:text-white transition-colors"
+        {services?.map(service => {
+          const isActive = service.isActive !== false;
+          return (
+            <Card
+              key={service.id}
+              className={`p-4 flex justify-between items-center transition-all ${
+                !isActive ? 'bg-gray-100 opacity-70' : ''
+              }`}
             >
-              <Trash2 size={18} />
-            </button>
-          </Card>
-        ))}
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-text-main">{service.name}</h4>
+                  {!isActive && (
+                    <span className="text-[10px] bg-gray-300 text-gray-600 px-2 py-0.5 rounded font-bold">
+                      NON-AKTIF
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-text-muted">
+                  Rp {service.price.toLocaleString()} / {service.unit} • {service.duration} Jam
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                {/* Toggle Aktif / Nonaktif */}
+                <button
+                  onClick={() => handleToggleActive(service)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                      : 'bg-gray-200 text-gray-500'
+                  }`}
+                >
+                  {isActive ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
+
+                {/* Delete */}
+                <button
+                  onClick={() => handleDelete(service.id)}
+                  className="p-2 text-danger bg-danger/10 rounded-lg hover:bg-danger hover:text-white transition-colors"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </Card>
+          );
+        })}
+
         {services?.length === 0 && (
           <p className="text-center text-gray-400 py-4">Belum ada layanan. Tambahkan dulu!</p>
         )}
@@ -269,6 +307,7 @@ const ServicesSettings = () => {
   );
 };
 
+// ---------- DATA INFO ----------
 const DataInfo = () => {
   return (
     <Card className="p-6 space-y-4 text-center">
