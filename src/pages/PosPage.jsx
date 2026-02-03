@@ -5,47 +5,66 @@ import { Card } from '@/components/ui/Cards';
 import { Button } from '@/components/ui/Buttons';
 import { formatRupiah, generateInvoiceNumber } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Minus, Plus, ShoppingBag, X, User, Search, UserPlus } from 'lucide-react';
+import {
+  Minus,
+  Plus,
+  X,
+  User,
+  Search,
+  UserPlus,
+  Tag,
+  Percent,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const PosPage = () => {
   const services = useLiveQuery(() => db.services.toArray());
   const customers = useLiveQuery(() => db.customers.toArray());
+
   const [cart, setCart] = useState([]);
   const [isSummaryOpen, setSummaryOpen] = useState(false);
 
-  // --- CUSTOMER STATE ---
+  // --- CUSTOMER ---
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
 
+  // --- DISCOUNT ---
+  const [discount, setDiscount] = useState(0);
+  const [discountType, setDiscountType] = useState('nominal'); // nominal | percent
+  const [isDiscountModalOpen, setDiscountModalOpen] = useState(false);
+
   // --- CART LOGIC ---
   const addToCart = (service) => {
-    setCart(prev => {
-      const existing = prev.find(item => item.id === service.id);
+    setCart((prev) => {
+      const existing = prev.find((item) => item.id === service.id);
       if (existing) {
-        return prev.map(item =>
+        return prev.map((item) =>
           item.id === service.id ? { ...item, qty: item.qty + 1 } : item
         );
       }
       return [...prev, { ...service, qty: 1 }];
     });
-    toast.success(`${service.name} ditambahkan`, { duration: 900 });
+    toast.success(`${service.name} ditambahkan`, { duration: 800 });
   };
 
   const updateQty = (id, delta) => {
-    setCart(prev =>
+    setCart((prev) =>
       prev
-        .map(item =>
+        .map((item) =>
           item.id === id ? { ...item, qty: Math.max(0, item.qty + delta) } : item
         )
-        .filter(item => item.qty > 0)
+        .filter((item) => item.qty > 0)
     );
   };
 
-  const calculateTotal = () =>
-    cart.reduce((acc, item) => acc + item.price * item.qty, 0);
+  const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
 
-  // --- CHECKOUT (UPDATED WITH CUSTOMER) ---
+  const discountAmount =
+    discountType === 'percent' ? (subtotal * discount) / 100 : discount;
+
+  const finalTotal = Math.max(0, subtotal - discountAmount);
+
+  // --- CHECKOUT ---
   const handleCheckout = async () => {
     if (cart.length === 0) return toast.error('Keranjang kosong!');
     if (!selectedCustomer) {
@@ -61,14 +80,18 @@ const PosPage = () => {
         customerName: selectedCustomer.name,
         customerPhone: selectedCustomer.phone,
         items: cart,
-        total: calculateTotal(),
+        subtotal,
+        discount: discountAmount,
+        total: finalTotal,
         status: 'antrian',
         date: new Date(),
         paymentStatus: 'unpaid',
       });
+
       toast.success('Order berhasil disimpan!');
       setCart([]);
       setSelectedCustomer(null);
+      setDiscount(0);
       setSummaryOpen(false);
     } catch (error) {
       toast.error('Gagal menyimpan order');
@@ -78,7 +101,7 @@ const PosPage = () => {
 
   return (
     <div className="p-6 pb-32 animate-slide-up space-y-6">
-      {/* ================= HEADER POS (CUSTOMER SELECTOR) ================= */}
+      {/* ================= HEADER POS ================= */}
       <div className="flex items-center justify-between">
         <div>
           {selectedCustomer ? (
@@ -112,7 +135,7 @@ const PosPage = () => {
 
       {/* ================= SERVICE GRID ================= */}
       <div className="grid grid-cols-1 gap-4">
-        {services?.map(service => (
+        {services?.map((service) => (
           <motion.div whileTap={{ scale: 0.98 }} key={service.id}>
             <Card
               className="p-5 flex items-center justify-between cursor-pointer border-2 border-transparent hover:border-primary/20 transition-all active:bg-gray-50"
@@ -137,7 +160,7 @@ const PosPage = () => {
         ))}
       </div>
 
-      {/* ================= STICKY BOTTOM SUMMARY BAR ================= */}
+      {/* ================= STICKY BOTTOM BAR ================= */}
       <AnimatePresence>
         {cart.length > 0 && (
           <motion.div
@@ -156,10 +179,10 @@ const PosPage = () => {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs text-gray-400 font-medium">
-                    Total Estimasi
+                    Total (+Diskon)
                   </span>
                   <span className="font-bold text-lg">
-                    {formatRupiah(calculateTotal()).replace(',00', '')}
+                    {formatRupiah(finalTotal).replace(',00', '')}
                   </span>
                 </div>
               </div>
@@ -174,7 +197,7 @@ const PosPage = () => {
         )}
       </AnimatePresence>
 
-      {/* ================= FULLSCREEN SUMMARY SHEET ================= */}
+      {/* ================= SUMMARY SHEET ================= */}
       <AnimatePresence>
         {isSummaryOpen && (
           <motion.div
@@ -201,7 +224,7 @@ const PosPage = () => {
                 </Button>
               </div>
 
-              {/* Selected Customer Preview */}
+              {/* Customer Preview */}
               <div
                 className="mb-4 p-4 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between cursor-pointer"
                 onClick={() => setCustomerModalOpen(true)}
@@ -211,22 +234,23 @@ const PosPage = () => {
                     Pelanggan
                   </p>
                   <p className="font-bold text-primary">
-                    {selectedCustomer ? selectedCustomer.name : 'Belum dipilih'}
+                    {selectedCustomer
+                      ? selectedCustomer.name
+                      : 'Belum dipilih'}
                   </p>
                 </div>
                 <User size={18} className="text-primary" />
               </div>
 
+              {/* Cart Items */}
               <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-                {cart.map(item => (
+                {cart.map((item) => (
                   <div
                     key={item.id}
                     className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl"
                   >
                     <div>
-                      <h4 className="font-bold text-text-main">
-                        {item.name}
-                      </h4>
+                      <h4 className="font-bold text-text-main">{item.name}</h4>
                       <p className="text-sm text-text-muted">
                         {formatRupiah(item.price)}
                       </p>
@@ -252,18 +276,115 @@ const PosPage = () => {
                 ))}
               </div>
 
-              <div className="border-t border-gray-100 pt-4 mt-4 space-y-4">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total Bayar</span>
-                  <span className="text-primary">
-                    {formatRupiah(calculateTotal())}
+              {/* DISCOUNT SECTION */}
+              <div className="border-t border-gray-100 pt-4 mt-2">
+                <div
+                  onClick={() => setDiscountModalOpen(true)}
+                  className="flex items-center justify-between bg-orange/10 p-3 rounded-xl cursor-pointer border border-orange/20 active:scale-95 transition-transform"
+                >
+                  <div className="flex items-center gap-2 text-orange-700">
+                    <Tag size={18} />{' '}
+                    <span className="font-bold text-sm">Diskon / Promo</span>
+                  </div>
+                  <span className="font-bold text-orange-700">
+                    {discount > 0
+                      ? `- ${formatRupiah(discountAmount)}`
+                      : 'Pilih >'}
                   </span>
                 </div>
-                <Button size="lg" className="w-full text-lg" onClick={handleCheckout}>
+              </div>
+
+              {/* TOTAL */}
+              <div className="border-t border-gray-100 pt-4 mt-4 space-y-4">
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>Subtotal</span>
+                    <span>{formatRupiah(subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-lg font-black">
+                    <span>Total Akhir</span>
+                    <span className="text-primary">
+                      {formatRupiah(finalTotal)}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full text-lg shadow-xl shadow-primary/30"
+                  onClick={handleCheckout}
+                >
                   Simpan Transaksi
                 </Button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================= DISCOUNT MODAL ================= */}
+      <AnimatePresence>
+        {isDiscountModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"
+          >
+            <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl">
+              <h3 className="font-bold text-lg mb-4">Atur Potongan Harga</h3>
+
+              <div className="flex bg-gray-100 p-1 rounded-xl mb-4">
+                <button
+                  onClick={() => setDiscountType('nominal')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                    discountType === 'nominal'
+                      ? 'bg-white shadow text-black'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  Rp (Nominal)
+                </button>
+                <button
+                  onClick={() => setDiscountType('percent')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+                    discountType === 'percent'
+                      ? 'bg-white shadow text-black'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  % (Persen)
+                </button>
+              </div>
+
+              <div className="relative mb-6">
+                <div className="absolute left-4 top-3.5 text-gray-400 font-bold">
+                  {discountType === 'nominal' ? 'Rp' : '%'}
+                </div>
+                <input
+                  type="number"
+                  className="w-full pl-12 p-3 bg-gray-50 rounded-xl font-bold text-lg outline-none focus:ring-2 focus:ring-primary"
+                  value={discount}
+                  onChange={(e) => setDiscount(Number(e.target.value))}
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => setDiscountModalOpen(false)}
+                  className="flex-1"
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={() => setDiscountModalOpen(false)}
+                  className="flex-1"
+                >
+                  Simpan
+                </Button>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -285,13 +406,13 @@ const PosPage = () => {
   );
 };
 
-// ================= SUB COMPONENT: CUSTOMER MODAL =================
+// ================= CUSTOMER MODAL =================
 const CustomerModal = ({ onClose, onSelect, customers }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [newCust, setNewCust] = useState({ name: '', phone: '' });
 
-  const filtered = customers?.filter(c =>
+  const filtered = customers?.filter((c) =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -317,20 +438,20 @@ const CustomerModal = ({ onClose, onSelect, customers }) => {
           </Button>
         </div>
 
-        {/* Search Input */}
+        {/* Search */}
         <div className="bg-gray-50 p-3 rounded-xl flex items-center gap-2 mb-4 border border-gray-200">
           <Search size={18} className="text-gray-400" />
           <input
             className="bg-transparent outline-none w-full text-sm"
             placeholder="Cari nama..."
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
-        {/* Customer List */}
+        {/* List */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-          {filtered?.map(c => (
+          {filtered?.map((c) => (
             <div
               key={c.id}
               onClick={() => onSelect(c)}
@@ -347,7 +468,7 @@ const CustomerModal = ({ onClose, onSelect, customers }) => {
           )}
         </div>
 
-        {/* Add New Customer */}
+        {/* Add New */}
         <div className="mt-4 pt-4 border-t border-gray-100">
           {isAdding ? (
             <div className="space-y-3 animate-slide-up">
@@ -356,7 +477,7 @@ const CustomerModal = ({ onClose, onSelect, customers }) => {
                 className="w-full p-3 bg-gray-50 rounded-xl text-sm border border-gray-200"
                 autoFocus
                 value={newCust.name}
-                onChange={e =>
+                onChange={(e) =>
                   setNewCust({ ...newCust, name: e.target.value })
                 }
               />
@@ -365,7 +486,7 @@ const CustomerModal = ({ onClose, onSelect, customers }) => {
                 className="w-full p-3 bg-gray-50 rounded-xl text-sm border border-gray-200"
                 type="tel"
                 value={newCust.phone}
-                onChange={e =>
+                onChange={(e) =>
                   setNewCust({ ...newCust, phone: e.target.value })
                 }
               />
