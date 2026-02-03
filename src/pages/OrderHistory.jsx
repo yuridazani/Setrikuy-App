@@ -1,14 +1,14 @@
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/db';
+import { useRealtime } from '@/lib/hooks'; // Hook Firebase
 import { Card } from '@/components/ui/Cards';
 import { formatRupiah } from '@/lib/utils';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns'; // Tambah parseISO untuk aman
 import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
+import { orderBy } from 'firebase/firestore'; // Untuk sorting
 
 const OrderHistory = () => {
-  // Ambil data order dari Dexie, urutkan dari yang terbaru (reverse)
-  const orders = useLiveQuery(() => db.orders.reverse().toArray());
+  // Ambil data orders realtime, urutkan berdasarkan tanggal (descending)
+  const orders = useRealtime('orders', [orderBy('date', 'desc')]);
   const navigate = useNavigate();
 
   return (
@@ -39,7 +39,8 @@ const OrderHistory = () => {
                     {order.invoiceNumber}
                   </span>
                   <p className="text-xs text-text-muted mt-2">
-                    {format(new Date(order.date), 'dd MMM yyyy, HH:mm')}
+                    {/* Gunakan parseISO karena tanggal di Firebase string */}
+                    {order.date ? format(parseISO(order.date), 'dd MMM yyyy, HH:mm') : '-'}
                   </p>
                 </div>
                 <div className={`px-3 py-1 rounded-full text-xs font-bold capitalize ${

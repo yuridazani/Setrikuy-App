@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/db';
+import { api } from '@/lib/db';
+import { useRealtime } from '@/lib/hooks';
 import { Card } from '@/components/ui/Cards';
 import { Button } from '@/components/ui/Buttons';
 import { formatRupiah, generateInvoiceNumber } from '@/lib/utils';
@@ -18,8 +18,8 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 const PosPage = () => {
-  const services = useLiveQuery(() => db.services.toArray());
-  const customers = useLiveQuery(() => db.customers.toArray());
+  const services = useRealtime('services');
+  const customers = useRealtime('customers');
 
   const [cart, setCart] = useState([]);
   const [isSummaryOpen, setSummaryOpen] = useState(false);
@@ -44,7 +44,7 @@ const PosPage = () => {
       }
       return [...prev, { ...service, qty: 1 }];
     });
-    toast.success(`${service.name} ditambahkan`, { duration: 800 });
+    toast.success(`${service.name} +1`);
   };
 
   const updateQty = (id, delta) => {
@@ -58,23 +58,21 @@ const PosPage = () => {
   };
 
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
-
   const discountAmount =
     discountType === 'percent' ? (subtotal * discount) / 100 : discount;
-
   const finalTotal = Math.max(0, subtotal - discountAmount);
 
   // --- CHECKOUT ---
   const handleCheckout = async () => {
     if (cart.length === 0) return toast.error('Keranjang kosong!');
     if (!selectedCustomer) {
-      toast.error('Pilih pelanggan dulu!');
+      toast.warning('Pilih pelanggan dulu!');
       setCustomerModalOpen(true);
       return;
     }
 
     try {
-      await db.orders.add({
+      await api.orders.add({
         invoiceNumber: generateInvoiceNumber(),
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
@@ -84,18 +82,17 @@ const PosPage = () => {
         discount: discountAmount,
         total: finalTotal,
         status: 'antrian',
-        date: new Date(),
         paymentStatus: 'unpaid',
       });
 
-      toast.success('Order berhasil disimpan!');
+      toast.success('Order Berhasil!');
       setCart([]);
       setSelectedCustomer(null);
       setDiscount(0);
       setSummaryOpen(false);
     } catch (error) {
-      toast.error('Gagal menyimpan order');
       console.error(error);
+      toast.error('Gagal menyimpan order');
     }
   };
 
@@ -158,6 +155,11 @@ const PosPage = () => {
             </Card>
           </motion.div>
         ))}
+        {services?.length === 0 && (
+          <p className="text-center text-gray-400 py-10">
+            Belum ada layanan. Tambah di Pengaturan.
+          </p>
+        )}
       </div>
 
       {/* ================= STICKY BOTTOM BAR ================= */}
@@ -276,14 +278,14 @@ const PosPage = () => {
                 ))}
               </div>
 
-              {/* DISCOUNT SECTION */}
+              {/* DISCOUNT */}
               <div className="border-t border-gray-100 pt-4 mt-2">
                 <div
                   onClick={() => setDiscountModalOpen(true)}
                   className="flex items-center justify-between bg-orange/10 p-3 rounded-xl cursor-pointer border border-orange/20 active:scale-95 transition-transform"
                 >
                   <div className="flex items-center gap-2 text-orange-700">
-                    <Tag size={18} />{' '}
+                    <Tag size={18} />
                     <span className="font-bold text-sm">Diskon / Promo</span>
                   </div>
                   <span className="font-bold text-orange-700">
@@ -399,6 +401,10 @@ const PosPage = () => {
               setCustomerModalOpen(false);
             }}
             customers={customers}
+            onAdd={async (newC) => {
+              const id = await api.customers.add(newC);
+              return id;
+            }}
           />
         )}
       </AnimatePresence>
@@ -407,7 +413,7 @@ const PosPage = () => {
 };
 
 // ================= CUSTOMER MODAL =================
-const CustomerModal = ({ onClose, onSelect, customers }) => {
+const CustomerModal = ({ onClose, onSelect, customers, onAdd }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [newCust, setNewCust] = useState({ name: '', phone: '' });
@@ -418,7 +424,7 @@ const CustomerModal = ({ onClose, onSelect, customers }) => {
 
   const handleAdd = async () => {
     if (!newCust.name) return;
-    const id = await db.customers.add(newCust);
+    const id = await onAdd(newCust);
     onSelect({ ...newCust, id });
     toast.success('Pelanggan baru dibuat!');
   };

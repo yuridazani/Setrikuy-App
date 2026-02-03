@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { db } from '@/lib/db';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { api } from '@/lib/db'; // API Wrapper
+import { useRealtime } from '@/lib/hooks'; // Hook Realtime
 import { Button } from '@/components/ui/Buttons';
 import { Card } from '@/components/ui/Cards';
 import { toast } from 'sonner';
-import { Store, Tag, Save, Trash2, Plus, Database, Upload, Download } from 'lucide-react';
+import { Store, Tag, Save, Trash2, Plus, CloudCheck } from 'lucide-react'; // Ganti Data dengan CloudCheck
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('toko'); // toko | layanan | data
@@ -17,14 +17,14 @@ const Settings = () => {
       <div className="flex p-1 bg-white border border-gray-200 rounded-2xl overflow-x-auto no-scrollbar">
         <TabButton active={activeTab === 'toko'} onClick={() => setActiveTab('toko')} icon={Store} label="Profil Toko" />
         <TabButton active={activeTab === 'layanan'} onClick={() => setActiveTab('layanan')} icon={Tag} label="Layanan" />
-        <TabButton active={activeTab === 'data'} onClick={() => setActiveTab('data')} icon={Database} label="Data" />
+        <TabButton active={activeTab === 'data'} onClick={() => setActiveTab('data')} icon={CloudCheck} label="Data Cloud" />
       </div>
 
       {/* Tab Content */}
       <div className="min-h-[50vh]">
         {activeTab === 'toko' && <StoreProfileSettings />}
         {activeTab === 'layanan' && <ServicesSettings />}
-        {activeTab === 'data' && <DataSettings />}
+        {activeTab === 'data' && <DataInfo />}
       </div>
     </div>
   );
@@ -49,7 +49,8 @@ const StoreProfileSettings = () => {
   });
 
   useEffect(() => {
-    db.settings.get('store_profile').then(data => {
+    // Ambil data dari Firebase saat load
+    api.settings.get('store_profile').then(data => {
       if (data) setProfile(data);
     });
   }, []);
@@ -60,8 +61,8 @@ const StoreProfileSettings = () => {
 
   const handleSave = async () => {
     try {
-      await db.settings.put({ ...profile, id: 'store_profile' });
-      toast.success("Profil toko berhasil disimpan!");
+      await api.settings.save('store_profile', profile);
+      toast.success("Profil toko berhasil disimpan (Online)!");
     } catch (e) {
       toast.error("Gagal menyimpan profil");
     }
@@ -81,10 +82,6 @@ const StoreProfileSettings = () => {
         <label className="text-sm font-bold text-text-muted">Nomor WA (Format: 628...)</label>
         <input name="phone" type="number" value={profile.phone} onChange={handleChange} className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="628123456789" />
       </div>
-      <div className="space-y-2">
-        <label className="text-sm font-bold text-text-muted">Pesan Footer Nota</label>
-        <input name="footerMessage" value={profile.footerMessage} onChange={handleChange} className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-primary/20" placeholder="Terima kasih..." />
-      </div>
       <Button onClick={handleSave} className="w-full mt-4 gap-2">
         <Save size={18} /> Simpan Profil
       </Button>
@@ -93,25 +90,29 @@ const StoreProfileSettings = () => {
 };
 
 const ServicesSettings = () => {
-  const services = useLiveQuery(() => db.services.toArray());
+  // Gunakan useRealtime agar kalau ditambah, list otomatis update
+  const services = useRealtime('services');
+  
   const [isAdding, setIsAdding] = useState(false);
   const [newService, setNewService] = useState({ name: '', price: '', unit: 'kg', duration: 24, type: 'kiloan' });
 
   const handleAdd = async () => {
     if (!newService.name || !newService.price) return toast.error("Nama dan harga wajib diisi");
-    await db.services.add({
+    
+    await api.services.add({
       ...newService,
       price: parseInt(newService.price),
       duration: parseInt(newService.duration)
     });
+    
     setIsAdding(false);
     setNewService({ name: '', price: '', unit: 'kg', duration: 24, type: 'kiloan' });
     toast.success("Layanan ditambahkan");
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (confirm('Hapus layanan ini?')) {
-      db.services.delete(id);
+      await api.services.delete(id);
       toast.success("Layanan dihapus");
     }
   };
@@ -182,79 +183,29 @@ const ServicesSettings = () => {
             </button>
           </Card>
         ))}
+        {services.length === 0 && (
+            <p className="text-center text-gray-400 py-4">Belum ada layanan. Tambahkan dulu!</p>
+        )}
       </div>
     </div>
   );
 };
 
-const DataSettings = () => {
-  const handleBackup = async () => {
-    try {
-      const allData = {
-        services: await db.services.toArray(),
-        customers: await db.customers.toArray(),
-        orders: await db.orders.toArray(),
-        settings: await db.settings.toArray(),
-        timestamp: new Date().toISOString()
-      };
-      
-      const blob = new Blob([JSON.stringify(allData)], {type: "application/json"});
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `Backup-Setrikuy-${new Date().toISOString().slice(0,10)}.json`;
-      link.click();
-      toast.success("Data berhasil didownload!");
-    } catch (e) {
-      toast.error("Gagal backup data");
-    }
-  };
-
-  const handleRestore = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-        if(!confirm("Restore akan menimpa data lama (kecuali jika ID beda). Lanjut?")) return;
-        
-        await db.transaction('rw', db.services, db.customers, db.orders, db.settings, async () => {
-          if(data.services) await db.services.bulkPut(data.services);
-          if(data.customers) await db.customers.bulkPut(data.customers);
-          if(data.orders) await db.orders.bulkPut(data.orders);
-          if(data.settings) await db.settings.bulkPut(data.settings);
-        });
-        toast.success("Data berhasil direstore!");
-        window.location.reload();
-      } catch (err) {
-        toast.error("File backup tidak valid");
-      }
-    };
-    reader.readAsText(file);
-  };
-
+const DataInfo = () => {
   return (
-    <Card className="p-6 space-y-6">
-      <div className="p-4 bg-orange/10 rounded-xl border border-orange/20 text-orange-700 text-sm">
-        <strong>Penting:</strong> Lakukan backup secara berkala. Data tersimpan di browser HP ini saja (Offline). Jika clear cache, data bisa hilang tanpa backup.
+    <Card className="p-6 space-y-4 text-center">
+      <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+        <CloudCheck size={40} />
       </div>
-      
-      <Button onClick={handleBackup} variant="outline" className="w-full justify-start gap-3 h-14">
-        <Download size={20} /> Backup Data (Download JSON)
-      </Button>
-
-      <div className="relative">
-        <input 
-          type="file" 
-          accept=".json"
-          onChange={handleRestore}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-        />
-        <Button variant="outline" className="w-full justify-start gap-3 h-14 border-dashed">
-          <Upload size={20} /> Restore Data (Upload JSON)
-        </Button>
+      <h3 className="font-bold text-xl text-text-main">Data Tersimpan Aman</h3>
+      <p className="text-sm text-text-muted">
+        Aplikasi Anda sekarang menggunakan <strong>Google Firebase Cloud</strong>. 
+        Data tersimpan otomatis di server Google secara Real-time.
+      </p>
+      <div className="bg-gray-50 p-4 rounded-xl text-left text-xs text-gray-500 mt-4 space-y-2">
+        <p>✅ Tidak perlu backup manual.</p>
+        <p>✅ Bisa diakses dari HP lain dengan akun yang sama.</p>
+        <p>✅ Data aman meskipun ganti HP.</p>
       </div>
     </Card>
   );

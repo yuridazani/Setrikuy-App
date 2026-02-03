@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '@/lib/db'; // Asumsi logic auth pakai simple check atau Dexie
+import { api } from '@/lib/db'; // Asumsi logic auth pakai simple check atau Dexie
 import { Button } from '@/components/ui/Buttons';
 import { toast } from 'sonner';
 import { ShieldCheck, User } from 'lucide-react';
