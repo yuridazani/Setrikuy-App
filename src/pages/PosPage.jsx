@@ -5,74 +5,131 @@ import { Card } from '@/components/ui/Cards';
 import { Button } from '@/components/ui/Buttons';
 import { formatRupiah, generateInvoiceNumber } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Minus, Plus, ShoppingBag, X } from 'lucide-react';
+import { Minus, Plus, ShoppingBag, X, User, Search, UserPlus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const PosPage = () => {
   const services = useLiveQuery(() => db.services.toArray());
+  const customers = useLiveQuery(() => db.customers.toArray());
   const [cart, setCart] = useState([]);
-  const [isSummaryOpen, setSummaryOpen] = useState(false); // Bottom Sheet Logic (Manual)
+  const [isSummaryOpen, setSummaryOpen] = useState(false);
 
-  // -- LOGIC CART --
+  // --- CUSTOMER STATE ---
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
+
+  // --- CART LOGIC ---
   const addToCart = (service) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === service.id);
       if (existing) {
-        return prev.map(item => item.id === service.id ? { ...item, qty: item.qty + 1 } : item);
+        return prev.map(item =>
+          item.id === service.id ? { ...item, qty: item.qty + 1 } : item
+        );
       }
       return [...prev, { ...service, qty: 1 }];
     });
-    toast.success(`${service.name} ditambahkan`, { duration: 1000 });
+    toast.success(`${service.name} ditambahkan`, { duration: 900 });
   };
 
   const updateQty = (id, delta) => {
-    setCart(prev => prev.map(item => {
-      if (item.id === id) {
-        return { ...item, qty: Math.max(0, item.qty + delta) };
-      }
-      return item;
-    }).filter(item => item.qty > 0));
+    setCart(prev =>
+      prev
+        .map(item =>
+          item.id === id ? { ...item, qty: Math.max(0, item.qty + delta) } : item
+        )
+        .filter(item => item.qty > 0)
+    );
   };
 
-  const calculateTotal = () => cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
+  const calculateTotal = () =>
+    cart.reduce((acc, item) => acc + item.price * item.qty, 0);
 
+  // --- CHECKOUT (UPDATED WITH CUSTOMER) ---
   const handleCheckout = async () => {
-    if (cart.length === 0) return toast.error("Keranjang kosong!");
+    if (cart.length === 0) return toast.error('Keranjang kosong!');
+    if (!selectedCustomer) {
+      toast.error('Pilih pelanggan dulu!');
+      setCustomerModalOpen(true);
+      return;
+    }
+
     try {
       await db.orders.add({
         invoiceNumber: generateInvoiceNumber(),
+        customerId: selectedCustomer.id,
+        customerName: selectedCustomer.name,
+        customerPhone: selectedCustomer.phone,
         items: cart,
         total: calculateTotal(),
         status: 'antrian',
         date: new Date(),
-        paymentStatus: 'unpaid'
+        paymentStatus: 'unpaid',
       });
-      toast.success("Order Berhasil Disimpan!");
+      toast.success('Order berhasil disimpan!');
       setCart([]);
+      setSelectedCustomer(null);
       setSummaryOpen(false);
     } catch (error) {
-      toast.error("Gagal menyimpan order");
+      toast.error('Gagal menyimpan order');
+      console.error(error);
     }
   };
 
   return (
-    <div className="p-6 pb-32 animate-slide-up">
-      <h2 className="text-xl font-bold mb-6">Pilih Layanan</h2>
-      
-      {/* Service Grid - Big Cards for Touch */}
+    <div className="p-6 pb-32 animate-slide-up space-y-6">
+      {/* ================= HEADER POS (CUSTOMER SELECTOR) ================= */}
+      <div className="flex items-center justify-between">
+        <div>
+          {selectedCustomer ? (
+            <div
+              onClick={() => setCustomerModalOpen(true)}
+              className="cursor-pointer"
+            >
+              <p className="text-xs text-text-muted font-bold uppercase">
+                Pelanggan
+              </p>
+              <h3 className="text-lg font-bold text-primary flex items-center gap-2">
+                {selectedCustomer.name} <User size={16} />
+              </h3>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCustomerModalOpen(true)}
+              className="gap-2 rounded-xl"
+            >
+              <UserPlus size={18} /> Pilih Pelanggan
+            </Button>
+          )}
+        </div>
+        <div className="text-right">
+          <p className="text-xs text-text-muted font-bold uppercase">Layanan</p>
+          <p className="text-lg font-bold">{services?.length || 0} Tersedia</p>
+        </div>
+      </div>
+
+      {/* ================= SERVICE GRID ================= */}
       <div className="grid grid-cols-1 gap-4">
         {services?.map(service => (
           <motion.div whileTap={{ scale: 0.98 }} key={service.id}>
-            <Card 
+            <Card
               className="p-5 flex items-center justify-between cursor-pointer border-2 border-transparent hover:border-primary/20 transition-all active:bg-gray-50"
               onClick={() => addToCart(service)}
             >
               <div>
-                <h3 className="font-bold text-lg text-text-main">{service.name}</h3>
-                <p className="text-sm text-text-muted font-medium mt-1">{service.duration} Jam • {service.type}</p>
+                <h3 className="font-bold text-lg text-text-main">
+                  {service.name}
+                </h3>
+                <p className="text-sm text-text-muted font-medium mt-1">
+                  {service.duration} Jam • {service.type}
+                </p>
               </div>
               <div className="text-right">
-                <span className="block font-extrabold text-primary text-lg">{formatRupiah(service.price).replace(',00', '')}</span>
+                <span className="block font-extrabold text-primary text-lg">
+                  {formatRupiah(service.price).replace(',00', '')}
+                </span>
                 <span className="text-xs text-text-muted">/ {service.unit}</span>
               </div>
             </Card>
@@ -80,26 +137,36 @@ const PosPage = () => {
         ))}
       </div>
 
-      {/* Sticky Bottom Summary Bar */}
+      {/* ================= STICKY BOTTOM SUMMARY BAR ================= */}
       <AnimatePresence>
         {cart.length > 0 && (
-          <motion.div 
-            initial={{ y: 100 }} 
-            animate={{ y: 0 }} 
+          <motion.div
+            initial={{ y: 100 }}
+            animate={{ y: 0 }}
             exit={{ y: 100 }}
             className="fixed bottom-24 left-0 w-full px-4 z-40 max-w-md mx-auto right-0"
           >
-            <div className="bg-black text-white p-4 rounded-[1.5rem] shadow-2xl flex items-center justify-between cursor-pointer" onClick={() => setSummaryOpen(true)}>
+            <div
+              className="bg-black text-white p-4 rounded-[1.5rem] shadow-2xl flex items-center justify-between cursor-pointer"
+              onClick={() => setSummaryOpen(true)}
+            >
               <div className="flex items-center gap-3">
                 <div className="bg-white/20 h-10 w-10 rounded-full flex items-center justify-center font-bold">
                   {cart.reduce((a, b) => a + b.qty, 0)}
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-gray-400 font-medium">Total Estimasi</span>
-                  <span className="font-bold text-lg">{formatRupiah(calculateTotal()).replace(',00', '')}</span>
+                  <span className="text-xs text-gray-400 font-medium">
+                    Total Estimasi
+                  </span>
+                  <span className="font-bold text-lg">
+                    {formatRupiah(calculateTotal()).replace(',00', '')}
+                  </span>
                 </div>
               </div>
-              <Button size="sm" className="bg-white text-black hover:bg-gray-200 font-bold rounded-xl px-4">
+              <Button
+                size="sm"
+                className="bg-white text-black hover:bg-gray-200 font-bold rounded-xl px-4"
+              >
                 Bayar &rarr;
               </Button>
             </div>
@@ -107,40 +174,79 @@ const PosPage = () => {
         )}
       </AnimatePresence>
 
-      {/* Fullscreen Summary Sheet (Manual Overlay) */}
+      {/* ================= FULLSCREEN SUMMARY SHEET ================= */}
       <AnimatePresence>
         {isSummaryOpen && (
-          <motion.div 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center backdrop-blur-sm"
           >
-            <motion.div 
-              initial={{ y: "100%" }} 
-              animate={{ y: 0 }} 
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className="bg-white w-full max-w-md rounded-t-4xl p-6 h-[85vh] flex flex-col"
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold">Rincian Order</h2>
-                <Button size="icon" variant="ghost" onClick={() => setSummaryOpen(false)}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => setSummaryOpen(false)}
+                >
                   <X />
                 </Button>
               </div>
 
+              {/* Selected Customer Preview */}
+              <div
+                className="mb-4 p-4 rounded-2xl border border-primary/20 bg-primary/5 flex items-center justify-between cursor-pointer"
+                onClick={() => setCustomerModalOpen(true)}
+              >
+                <div>
+                  <p className="text-xs text-text-muted font-bold uppercase">
+                    Pelanggan
+                  </p>
+                  <p className="font-bold text-primary">
+                    {selectedCustomer ? selectedCustomer.name : 'Belum dipilih'}
+                  </p>
+                </div>
+                <User size={18} className="text-primary" />
+              </div>
+
               <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-                {cart.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl">
+                {cart.map(item => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between bg-gray-50 p-4 rounded-2xl"
+                  >
                     <div>
-                      <h4 className="font-bold text-text-main">{item.name}</h4>
-                      <p className="text-sm text-text-muted">{formatRupiah(item.price)}</p>
+                      <h4 className="font-bold text-text-main">
+                        {item.name}
+                      </h4>
+                      <p className="text-sm text-text-muted">
+                        {formatRupiah(item.price)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-1">
-                      <button onClick={() => updateQty(item.id, -1)} className="h-8 w-8 flex items-center justify-center bg-gray-100 rounded-lg hover:bg-gray-200">-</button>
-                      <span className="font-bold w-4 text-center">{item.qty}</span>
-                      <button onClick={() => updateQty(item.id, 1)} className="h-8 w-8 flex items-center justify-center bg-primary text-white rounded-lg hover:bg-primary/90">+</button>
+                      <button
+                        onClick={() => updateQty(item.id, -1)}
+                        className="h-8 w-8 flex items-center justify-center bg-gray-100 rounded-lg hover:bg-gray-200"
+                      >
+                        <Minus size={16} />
+                      </button>
+                      <span className="font-bold w-4 text-center">
+                        {item.qty}
+                      </span>
+                      <button
+                        onClick={() => updateQty(item.id, 1)}
+                        className="h-8 w-8 flex items-center justify-center bg-primary text-white rounded-lg hover:bg-primary/90"
+                      >
+                        <Plus size={16} />
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -149,7 +255,9 @@ const PosPage = () => {
               <div className="border-t border-gray-100 pt-4 mt-4 space-y-4">
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total Bayar</span>
-                  <span className="text-primary">{formatRupiah(calculateTotal())}</span>
+                  <span className="text-primary">
+                    {formatRupiah(calculateTotal())}
+                  </span>
                 </div>
                 <Button size="lg" className="w-full text-lg" onClick={handleCheckout}>
                   Simpan Transaksi
@@ -159,7 +267,124 @@ const PosPage = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ================= CUSTOMER MODAL ================= */}
+      <AnimatePresence>
+        {isCustomerModalOpen && (
+          <CustomerModal
+            onClose={() => setCustomerModalOpen(false)}
+            onSelect={(cust) => {
+              setSelectedCustomer(cust);
+              setCustomerModalOpen(false);
+            }}
+            customers={customers}
+          />
+        )}
+      </AnimatePresence>
     </div>
+  );
+};
+
+// ================= SUB COMPONENT: CUSTOMER MODAL =================
+const CustomerModal = ({ onClose, onSelect, customers }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+  const [newCust, setNewCust] = useState({ name: '', phone: '' });
+
+  const filtered = customers?.filter(c =>
+    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleAdd = async () => {
+    if (!newCust.name) return;
+    const id = await db.customers.add(newCust);
+    onSelect({ ...newCust, id });
+    toast.success('Pelanggan baru dibuat!');
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+    >
+      <div className="bg-white w-full max-w-sm rounded-[2rem] p-6 max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-bold text-lg">Pilih Pelanggan</h3>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X size={20} />
+          </Button>
+        </div>
+
+        {/* Search Input */}
+        <div className="bg-gray-50 p-3 rounded-xl flex items-center gap-2 mb-4 border border-gray-200">
+          <Search size={18} className="text-gray-400" />
+          <input
+            className="bg-transparent outline-none w-full text-sm"
+            placeholder="Cari nama..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        {/* Customer List */}
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {filtered?.map(c => (
+            <div
+              key={c.id}
+              onClick={() => onSelect(c)}
+              className="p-3 hover:bg-primary/5 rounded-xl cursor-pointer border border-transparent hover:border-primary/20 transition-all"
+            >
+              <p className="font-bold text-text-main">{c.name}</p>
+              <p className="text-xs text-text-muted">{c.phone || '-'}</p>
+            </div>
+          ))}
+          {filtered?.length === 0 && !isAdding && (
+            <p className="text-center text-gray-400 text-sm py-4">
+              Tidak ditemukan
+            </p>
+          )}
+        </div>
+
+        {/* Add New Customer */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          {isAdding ? (
+            <div className="space-y-3 animate-slide-up">
+              <input
+                placeholder="Nama Pelanggan"
+                className="w-full p-3 bg-gray-50 rounded-xl text-sm border border-gray-200"
+                autoFocus
+                value={newCust.name}
+                onChange={e =>
+                  setNewCust({ ...newCust, name: e.target.value })
+                }
+              />
+              <input
+                placeholder="No HP (Opsional)"
+                className="w-full p-3 bg-gray-50 rounded-xl text-sm border border-gray-200"
+                type="tel"
+                value={newCust.phone}
+                onChange={e =>
+                  setNewCust({ ...newCust, phone: e.target.value })
+                }
+              />
+              <Button onClick={handleAdd} className="w-full">
+                Simpan & Pilih
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full border-dashed"
+              onClick={() => setIsAdding(true)}
+            >
+              + Pelanggan Baru
+            </Button>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 };
 

@@ -8,6 +8,7 @@ import Dashboard from '@/pages/Dashboard';
 import PosPage from '@/pages/PosPage';
 import OrderHistory from '@/pages/OrderHistory';
 import OrderDetail from '@/pages/OrderDetail';
+import Settings from '@/pages/Settings';
 
 const BottomNav = () => {
   const location = useLocation();
@@ -66,7 +67,7 @@ function App() {
           <Route path="/orders" element={<OrderHistory />} />
           <Route path="/orders/:id" element={<OrderDetail />} />
           
-          <Route path="/settings" element={<div className="p-8 font-bold text-2xl">Pengaturan</div>} />
+          <Route path="/settings" element={<Settings />} />
         </Routes>
         
         <BottomNav />
