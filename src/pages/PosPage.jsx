@@ -13,7 +13,6 @@ import {
   Search,
   UserPlus,
   Tag,
-  Percent,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -32,6 +31,9 @@ const PosPage = () => {
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState('nominal'); // nominal | percent
   const [isDiscountModalOpen, setDiscountModalOpen] = useState(false);
+
+  // --- NOTES ---
+  const [notes, setNotes] = useState(''); // ✅ STATE BARU
 
   // --- CART LOGIC ---
   const addToCart = (service) => {
@@ -81,6 +83,7 @@ const PosPage = () => {
         subtotal,
         discount: discountAmount,
         total: finalTotal,
+        notes: notes, // ✅ SIMPAN NOTES
         status: 'antrian',
         paymentStatus: 'unpaid',
       });
@@ -89,6 +92,7 @@ const PosPage = () => {
       setCart([]);
       setSelectedCustomer(null);
       setDiscount(0);
+      setNotes(''); // ✅ RESET NOTES
       setSummaryOpen(false);
     } catch (error) {
       console.error(error);
@@ -294,6 +298,20 @@ const PosPage = () => {
                       : 'Pilih >'}
                   </span>
                 </div>
+              </div>
+
+              {/* ✅ NOTES */}
+              <div className="mt-4">
+                <label className="text-xs font-bold text-gray-400 uppercase ml-1">
+                  Catatan Order
+                </label>
+                <textarea
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm mt-1 focus:ring-2 focus:ring-primary outline-none"
+                  placeholder="Contoh: Jangan disetrika, Luntur, dll..."
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
               </div>
 
               {/* TOTAL */}
