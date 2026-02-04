@@ -525,7 +525,7 @@ ${center('TERIMA KASIH')}
 
             <div className="mx-5 mt-4 mb-4 max-h-[55vh] overflow-y-auto">
               <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-4">
-                <pre className="text-[11px] leading-[1.5] text-gray-800 whitespace-pre font-mono tracking-tight">
+                <pre className="text-[11px] leading-normal text-gray-800 whitespace-pre font-mono tracking-tight">
                   {generateReceiptText((order.printCount || 0) > 0)}
                 </pre>
               </div>
@@ -557,7 +557,7 @@ ${center('TERIMA KASIH')}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center backdrop-blur-sm"
+            className="fixed inset-0 bg-black/60 z-60 flex items-end justify-center backdrop-blur-sm"
             onClick={() => setWaModalOpen(false)}
           >
             <motion.div

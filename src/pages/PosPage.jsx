@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { api } from '@/lib/db';
 import { useRealtime } from '@/lib/hooks';
 import { Card } from '@/components/ui/Cards';
@@ -6,21 +6,17 @@ import { Button } from '@/components/ui/Buttons';
 import { formatRupiah, generateInvoiceNumber } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  Minus,
-  Plus,
   X,
   User,
-  Search,
   UserPlus,
-  Tag,
   Wallet,
   CreditCard,
   Banknote,
   QrCode,
   Scale,
   TicketPercent,
-  ChevronDown,
   Check,
+  ChevronRight,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -29,7 +25,6 @@ const PosPage = () => {
   const customers = useRealtime('customers');
   const promosRaw = useRealtime('promos');
 
-  // 🔥 SETTINGS (UNTUK PREFIX NOTA)
   const settings = useRealtime('settings');
   const invoicePrefix =
     settings?.find((s) => s.id === 'main')?.invoicePrefix || 'INV';
@@ -40,21 +35,18 @@ const PosPage = () => {
   const [cart, setCart] = useState([]);
   const [isSummaryOpen, setSummaryOpen] = useState(false);
 
-  // ✅ MIN WEIGHT SWITCH (DEFAULT ON)
+  // ✅ MIN WEIGHT SWITCH
   const [useMinWeight, setUseMinWeight] = useState(true);
 
-  // --- CUSTOMER ---
+  // CUSTOMER
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
 
-  // --- PROMO (MANUAL SELECTOR) ---
+  // PROMO & NOTES
   const [selectedPromo, setSelectedPromo] = useState(null);
-  const [isPromoSelectorOpen, setPromoSelectorOpen] = useState(false);
-
-  // --- NOTES ---
   const [notes, setNotes] = useState('');
 
-  // --- PAYMENT ---
+  // PAYMENT
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [cashAmount, setCashAmount] = useState('');
@@ -74,7 +66,6 @@ const PosPage = () => {
         return prev.map((item) => {
           if (item.id === service.id) {
             const newQty = item.qty + 1;
-            // 🔥 AUTO ADJUST: Jika min 3kg aktif dan unit kg, langsung set 3
             const adjustedQty =
               useMinWeight && item.unit === 'kg' && newQty < 3 ? 3 : newQty;
             return { ...item, qty: adjustedQty };
@@ -82,7 +73,6 @@ const PosPage = () => {
           return item;
         });
       }
-      // 🔥 FIRST ADD: Langsung 3kg jika aktif
       const initialQty = useMinWeight && service.unit === 'kg' ? 3 : 1;
       return [...prev, { ...service, qty: initialQty }];
     });
@@ -95,7 +85,6 @@ const PosPage = () => {
         .map((item) => {
           if (item.id === id) {
             const newQty = Math.max(0, item.qty + delta);
-            // 🔥 ENFORCE MIN 3KG
             if (useMinWeight && item.unit === 'kg' && newQty > 0 && newQty < 3) {
               return { ...item, qty: 3 };
             }
@@ -107,34 +96,25 @@ const PosPage = () => {
     );
   };
 
-  // 🔥 TOGGLE MIN WEIGHT: Auto-adjust semua item kg di cart
   const toggleMinWeight = () => {
     const newValue = !useMinWeight;
     setUseMinWeight(newValue);
-
     if (newValue) {
-      // Aktifkan: Set semua item kg yang < 3 jadi 3
       setCart((prev) =>
-        prev.map((item) => {
-          if (item.unit === 'kg' && item.qty < 3) {
-            return { ...item, qty: 3 };
-          }
-          return item;
-        })
+        prev.map((item) =>
+          item.unit === 'kg' && item.qty < 3 ? { ...item, qty: 3 } : item
+        )
       );
     }
-    // Jika dimatikan, qty tetap (user bisa kurangi manual)
   };
 
   // ================= TOTAL LOGIC =================
   const subtotal = cart.reduce((acc, item) => acc + item.price * item.qty, 0);
-
   const totalWeight = cart.reduce(
     (acc, item) => acc + (item.unit === 'kg' ? item.qty : 0),
     0
   );
 
-  // ================= 🔥 ELIGIBLE PROMOS (AUTO-CHECK) =================
   const eligiblePromos =
     promos?.filter((promo) => {
       if (promo.minType === 'weight' && totalWeight >= promo.minValue)
@@ -143,7 +123,6 @@ const PosPage = () => {
       return false;
     }) || [];
 
-  // ================= CALCULATE DISCOUNT =================
   const calculateDiscount = (promo) => {
     if (!promo) return 0;
     if (promo.type === 'percent') {
@@ -188,7 +167,6 @@ const PosPage = () => {
 
     try {
       await api.orders.add({
-        // 🔥 PAKAI PREFIX DARI SETTINGS
         invoiceNumber: generateInvoiceNumber(invoicePrefix),
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
@@ -224,7 +202,6 @@ const PosPage = () => {
           : 'Disimpan! Menunggu pembayaran.'
       );
 
-      // RESET
       setCart([]);
       setSelectedCustomer(null);
       setSelectedPromo(null);
@@ -247,12 +224,12 @@ const PosPage = () => {
             Pelanggan
           </p>
           {selectedCustomer ? (
-            <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-bold flex items-center gap-2">
-              <User size={18} /> {selectedCustomer.name}
+            <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-bold flex items-center gap-2 text-sm">
+              <User size={16} /> {selectedCustomer.name}
             </div>
           ) : (
-            <div className="bg-gray-100 text-gray-400 px-4 py-2 rounded-xl font-bold flex items-center gap-2">
-              <UserPlus size={18} /> Pilih Pelanggan
+            <div className="bg-gray-100 text-gray-400 px-4 py-2 rounded-xl font-bold flex items-center gap-2 text-sm hover:bg-gray-200 transition-colors">
+              <UserPlus size={16} /> Pilih Pelanggan
             </div>
           )}
         </div>
@@ -276,92 +253,91 @@ const PosPage = () => {
                   {service.duration} Jam • {service.type}
                 </p>
               </div>
-              <div className="text-right">
-                <span className="block font-black text-primary">
-                  {formatRupiah(service.price).replace(',00', '')}
-                </span>
-              </div>
+              <span className="block font-black text-primary">
+                {formatRupiah(service.price).replace(',00', '')}
+              </span>
             </Card>
           </motion.div>
         ))}
       </div>
 
-      {/* ================= STICKY BAR ================= */}
+      {/* ================= FLOATING BAR ================= */}
       <AnimatePresence>
         {cart.length > 0 && (
           <motion.div
             initial={{ y: 100 }}
             animate={{ y: 0 }}
             exit={{ y: 100 }}
-            className="fixed bottom-24 left-4 right-4 z-40 max-w-md mx-auto"
+            className="fixed bottom-6 left-4 right-4 z-40 max-w-md mx-auto"
           >
             <div
-              className="bg-black text-white p-4 rounded-[1.5rem] shadow-2xl flex items-center justify-between cursor-pointer"
               onClick={() => setSummaryOpen(true)}
+              className="bg-gray-900 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between cursor-pointer hover:bg-gray-800 transition-colors"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
                 <div className="bg-white/20 h-10 w-10 rounded-full flex items-center justify-center font-bold">
                   {cart.reduce((a, b) => a + b.qty, 0)}
                 </div>
                 <div className="flex flex-col">
                   <span className="text-xs text-gray-400 font-medium">
-                    Total {selectedPromo ? '(+Promo)' : ''}
+                    Total Estimasi
                   </span>
-                  <span className="font-bold text-lg">
+                  <span className="font-bold text-lg leading-none">
                     {formatRupiah(finalTotal).replace(',00', '')}
                   </span>
                 </div>
               </div>
-              <Button
-                size="sm"
-                className="bg-white text-black hover:bg-gray-200 font-bold rounded-xl px-4"
-              >
-                Bayar →
-              </Button>
+              <div className="flex items-center gap-2 font-bold text-sm bg-white text-black px-4 py-2 rounded-xl">
+                Bayar <ChevronRight size={16} />
+              </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ================= SUMMARY SHEET ================= */}
+      {/* ================= 🔥 SUMMARY MODAL (CENTERED) ================= */}
       <AnimatePresence>
         {isSummaryOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm py-4 px-4 sm:p-4 safe-area-inset"
             onClick={() => setSummaryOpen(false)}
           >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="bg-white w-full max-w-md rounded-t-4xl h-[90vh] flex flex-col relative"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[85vh] mt-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* 🔥 FIXED HEADER */}
-              <div className="sticky top-0 bg-white z-50 px-6 pt-6 pb-4 rounded-t-4xl border-b border-gray-100 shadow-sm shrink-0">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-bold">Rincian Order</h2>
-                  <button
-                    onClick={() => setSummaryOpen(false)}
-                    className="shrink-0 w-12 h-12 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition-colors active:scale-95"
-                  >
-                    <X size={22} strokeWidth={2.5} />
-                  </button>
-                </div>
+              {/* HEADER */}
+              <div className="px-6 pt-4 pb-4 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
+                <h2 className="text-lg font-bold text-gray-800">
+                  Rincian Order
+                </h2>
+                <button
+                  onClick={() => setSummaryOpen(false)}
+                  className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              {/* 🔥 SCROLLABLE CONTENT */}
-              <div className="flex-1 overflow-y-auto px-6 pt-50 pb-4 overscroll-contain">
-                {/* ===== SWITCH MIN 3KG ===== */}
-                <div className="mb-4 bg-blue-50 p-3 rounded-xl flex items-center justify-between border border-blue-100">
-                  <div className="flex items-center gap-2 text-blue-800">
-                    <Scale size={20} />
+              {/* CONTENT */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 bg-gray-50/50">
+                {/* SWITCH MIN 3KG */}
+                <div className="mb-4 bg-white p-3 rounded-2xl flex items-center justify-between border border-gray-100 shadow-sm">
+                  <div className="flex items-center gap-3 text-blue-800">
+                    <div className="bg-blue-50 p-2 rounded-xl">
+                      <Scale size={18} className="text-blue-600" />
+                    </div>
                     <div>
-                      <p className="font-bold text-sm">Minimal 3KG</p>
-                      <p className="text-[10px] opacity-70">
+                      <p className="font-bold text-sm text-gray-800">
+                        Minimal 3KG
+                      </p>
+                      <p className="text-[10px] text-gray-400">
                         Auto set qty jadi 3kg
                       </p>
                     </div>
@@ -380,58 +356,48 @@ const PosPage = () => {
                   </button>
                 </div>
 
-                {/* 🔥 CART ITEMS */}
-                <div className="space-y-3 mb-4">
-                  <p className="text-xs font-bold text-gray-400 uppercase">
-                    Item ({cart.length})
-                  </p>
+                {/* ITEMS */}
+                <div className="space-y-3 mb-6">
                   {cart.map((item) => (
                     <div
                       key={item.id}
-                      className="flex items-start justify-between bg-gray-50 p-3 rounded-2xl"
+                      className="flex justify-between items-center bg-white p-3 rounded-2xl border border-gray-100 shadow-sm"
                     >
-                      <div className="flex-1 min-w-0 pr-3">
-                        <h4 className="font-bold text-text-main text-sm truncate">
+                      <div className="flex-1 pr-4">
+                        <h4 className="font-bold text-sm text-gray-800">
                           {item.name}
                         </h4>
-                        <p className="text-xs text-text-muted">
+                        <p className="text-xs text-gray-400 mt-0.5">
                           {formatRupiah(item.price)} × {item.qty} {item.unit}
                         </p>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1 shadow-sm">
-                          <button
-                            onClick={() => updateQty(item.id, -1)}
-                            className="h-8 w-8 flex items-center justify-center bg-gray-100 rounded-lg font-bold text-gray-600 hover:bg-gray-200"
-                          >
-                            -
-                          </button>
-                          <span className="font-bold w-6 text-center text-sm">
-                            {item.qty}
-                          </span>
-                          <button
-                            onClick={() => updateQty(item.id, 1)}
-                            className="h-8 w-8 flex items-center justify-center bg-primary text-white rounded-lg font-bold hover:bg-primary/90"
-                          >
-                            +
-                          </button>
-                        </div>
-                        <span className="font-bold text-sm w-20 text-right">
-                          {formatRupiah(item.price * item.qty).replace(',00', '')}
+                      <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-1 border border-gray-100">
+                        <button
+                          onClick={() => updateQty(item.id, -1)}
+                          className="w-8 h-8 flex items-center justify-center bg-white rounded-lg shadow-sm text-gray-600 font-bold hover:bg-gray-100"
+                        >
+                          -
+                        </button>
+                        <span className="w-4 text-center font-bold text-sm text-gray-800">
+                          {item.qty}
                         </span>
+                        <button
+                          onClick={() => updateQty(item.id, 1)}
+                          className="w-8 h-8 flex items-center justify-center bg-blue-600 rounded-lg shadow-sm text-white font-bold hover:bg-blue-700"
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                {/* 🔥 PROMO SELECTOR */}
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-gray-400 uppercase">
-                      Promo
-                    </p>
+                {/* PROMO & NOTES */}
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                    <span>Promo & Catatan</span>
                     {eligiblePromos.length > 0 && (
-                      <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">
+                      <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded-md">
                         {eligiblePromos.length} Tersedia
                       </span>
                     )}
@@ -442,22 +408,21 @@ const PosPage = () => {
                       {eligiblePromos.map((promo) => {
                         const discount = calculateDiscount(promo);
                         const isSelected = selectedPromo?.id === promo.id;
-
                         return (
                           <button
                             key={promo.id}
                             onClick={() =>
                               setSelectedPromo(isSelected ? null : promo)
                             }
-                            className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
+                            className={`w-full flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${
                               isSelected
-                                ? 'border-green-500 bg-green-50'
-                                : 'border-gray-200 bg-white hover:border-green-300'
+                                ? 'bg-green-50 border-green-500 text-green-700'
+                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-green-300'
                             }`}
                           >
-                            <div className="flex items-center gap-2 text-left">
+                            <div className="flex items-center gap-2">
                               <div
-                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
                                   isSelected
                                     ? 'border-green-500 bg-green-500'
                                     : 'border-gray-300'
@@ -465,41 +430,16 @@ const PosPage = () => {
                               >
                                 {isSelected && (
                                   <Check
-                                    size={14}
+                                    size={12}
                                     className="text-white"
                                     strokeWidth={3}
                                   />
                                 )}
                               </div>
-                              <div>
-                                <p
-                                  className={`font-bold text-xs ${
-                                    isSelected
-                                      ? 'text-green-700'
-                                      : 'text-gray-700'
-                                  }`}
-                                >
-                                  {promo.name}
-                                </p>
-                                <p className="text-[10px] text-gray-500">
-                                  {promo.type === 'percent'
-                                    ? `${promo.value}%`
-                                    : formatRupiah(promo.value)}
-                                  {' • '}
-                                  Min {promo.minValue}{' '}
-                                  {promo.minType === 'weight' ? 'kg' : 'Rp'}
-                                </p>
-                              </div>
+                              <span>{promo.name}</span>
                             </div>
-                            <span
-                              className={`font-bold text-sm ${
-                                isSelected
-                                  ? 'text-green-700'
-                                  : 'text-gray-600'
-                              }`}
-                            >
-                              -
-                              {formatRupiah(discount).replace(',00', '')}
+                            <span>
+                              -{formatRupiah(discount).replace(',00', '')}
                             </span>
                           </button>
                         );
@@ -518,42 +458,40 @@ const PosPage = () => {
                   )}
 
                   <textarea
-                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary outline-none resize-none"
-                    placeholder="Catatan (Mis: Jangan dilipat)"
-                    rows={2}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                    placeholder="Catatan tambahan..."
+                    rows={2}
                   />
                 </div>
               </div>
 
-              {/* 🔥 STICKY FOOTER */}
-              <div className="shrink-0 sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
-                <div className="space-y-2 mb-4">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Subtotal</span>
-                    <span className="font-bold">{formatRupiah(subtotal)}</span>
+              {/* FOOTER */}
+              <div className="p-5 border-t border-gray-100 bg-white shrink-0">
+                <div className="space-y-1 mb-4">
+                  <div className="flex justify-between text-sm text-gray-500">
+                    <span>Subtotal</span>
+                    <span>{formatRupiah(subtotal)}</span>
                   </div>
                   {selectedPromo && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-green-600">
-                        Promo ({selectedPromo.name})
-                      </span>
-                      <span className="font-bold text-green-600">
-                        -{formatRupiah(promoDiscount)}
-                      </span>
+                    <div className="flex justify-between text-sm text-green-600 font-medium">
+                      <span>Diskon</span>
+                      <span>-{formatRupiah(promoDiscount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-lg font-black pt-2 border-t border-gray-200">
-                    <span>Total Akhir</span>
-                    <span className="text-primary">
-                      {formatRupiah(finalTotal)}
+                  <div className="flex justify-between items-end pt-2 border-t border-dashed border-gray-200 mt-2">
+                    <span className="font-bold text-gray-800">
+                      Total Bayar
+                    </span>
+                    <span className="text-2xl font-black text-gray-900">
+                      {formatRupiah(finalTotal).replace(',00', '')}
                     </span>
                   </div>
                 </div>
                 <Button
                   size="lg"
-                  className="w-full text-lg shadow-xl shadow-primary/30"
+                  className="w-full rounded-xl text-lg font-bold shadow-lg shadow-blue-500/30"
                   onClick={openPaymentModal}
                 >
                   Lanjut Pembayaran
@@ -564,48 +502,47 @@ const PosPage = () => {
         )}
       </AnimatePresence>
 
-      {/* ================= PAYMENT MODAL ================= */}
+      {/* ================= 🔥 PAYMENT MODAL (CENTERED) ================= */}
       <AnimatePresence>
         {isPaymentModalOpen && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 z-70 flex items-end justify-center backdrop-blur-sm"
+            className="fixed inset-0 z-60 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm py-4 px-4 sm:p-4"
             onClick={() => setPaymentModalOpen(false)}
           >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="bg-white w-full max-w-md rounded-t-4xl max-h-[90vh] flex flex-col relative"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[90vh] mt-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* FIXED HEADER */}
-              <div className="shrink-0 sticky top-0 bg-white z-20 px-6 pt-6 pb-4 rounded-t-4xl border-b border-gray-100 shadow-sm">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-xl">Metode Pembayaran</h3>
-                  <button
-                    onClick={() => setPaymentModalOpen(false)}
-                    className="shrink-0 w-12 h-12 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition-colors active:scale-95"
-                  >
-                    <X size={22} strokeWidth={2.5} />
-                  </button>
-                </div>
+              {/* HEADER */}
+              <div className="px-6 pt-4 pb-4 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
+                <h3 className="text-lg font-bold text-gray-800">
+                  Metode Pembayaran
+                </h3>
+                <button
+                  onClick={() => setPaymentModalOpen(false)}
+                  className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              {/* SCROLLABLE CONTENT */}
-              <div className="flex-1 overflow-y-auto px-6 py-20">
-                <div className="bg-gray-50 p-4 rounded-2xl text-center mb-6 border border-gray-200">
-                  <p className="text-xs text-gray-500 font-bold uppercase mb-1">
+              {/* CONTENT */}
+              <div className="flex-1 overflow-y-auto px-6 py-6 bg-white">
+                <div className="bg-gray-900 text-white p-6 rounded-2xl text-center mb-6 shadow-xl shadow-gray-200">
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">
                     Total Tagihan
                   </p>
-                  <h2 className="text-3xl font-black text-primary">
-                    {formatRupiah(finalTotal)}
+                  <h2 className="text-4xl font-black">
+                    {formatRupiah(finalTotal).replace(',00', '')}
                   </h2>
                 </div>
 
-                {/* Tabs */}
                 <div className="grid grid-cols-4 gap-2 mb-6">
                   {[
                     { id: 'cash', icon: Banknote, label: 'Tunai' },
@@ -616,54 +553,58 @@ const PosPage = () => {
                     <button
                       key={m.id}
                       onClick={() => setPaymentMethod(m.id)}
-                      className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all border-2 ${
+                      className={`flex flex-col items-center justify-center p-3 rounded-2xl transition-all border-2 ${
                         paymentMethod === m.id
-                          ? 'border-primary bg-primary/10 text-primary'
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
                           : 'border-gray-100 text-gray-400 hover:bg-gray-50'
                       }`}
                     >
-                      <m.icon size={24} className="mb-1" />
+                      <m.icon size={24} className="mb-1.5" />
                       <span className="text-[10px] font-bold">{m.label}</span>
                     </button>
                   ))}
                 </div>
 
-                {/* Forms */}
-                <div className="mb-4">
-                  {/* CASH */}
+                {/* FORMS */}
+                <div className="animate-slide-up">
                   {paymentMethod === 'cash' && (
-                    <div className="space-y-4 animate-slide-up">
+                    <div className="space-y-4">
                       <div>
-                        <label className="text-sm font-bold text-gray-500 mb-1 block">
+                        <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">
                           Uang Diterima
                         </label>
-                        <input
-                          type="number"
-                          autoFocus
-                          className="w-full p-4 text-xl font-bold bg-gray-50 rounded-xl border-2 border-primary/20 focus:border-primary outline-none"
-                          placeholder="0"
-                          value={cashAmount}
-                          onChange={(e) => setCashAmount(e.target.value)}
-                        />
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-bold">
+                            Rp
+                          </span>
+                          <input
+                            type="number"
+                            autoFocus
+                            className="w-full pl-10 p-4 text-2xl font-bold bg-gray-50 rounded-2xl border-2 border-gray-200 focus:border-blue-500 outline-none"
+                            placeholder="0"
+                            value={cashAmount}
+                            onChange={(e) => setCashAmount(e.target.value)}
+                          />
+                        </div>
                       </div>
-                      <div className="flex justify-between items-center bg-green-50 p-4 rounded-xl border border-green-100">
-                        <span className="text-green-700 font-bold">
-                          Kembalian
-                        </span>
-                        <span className="text-xl font-black text-green-700">
-                          {cashAmount
-                            ? formatRupiah(
-                                Math.max(0, cashAmount - finalTotal)
-                              )
-                            : 'Rp 0'}
-                        </span>
-                      </div>
-                      <div className="flex gap-2 overflow-x-auto pb-2">
+                      {cashAmount > 0 && (
+                        <div className="flex justify-between items-center bg-green-50 p-4 rounded-2xl border border-green-200">
+                          <span className="text-green-700 font-bold">
+                            Kembalian
+                          </span>
+                          <span className="text-xl font-black text-green-700">
+                            {formatRupiah(
+                              Math.max(0, cashAmount - finalTotal)
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                         {[finalTotal, 50000, 100000].map((amt) => (
                           <button
                             key={amt}
                             onClick={() => setCashAmount(amt)}
-                            className="px-4 py-2 bg-gray-100 rounded-lg text-xs font-bold whitespace-nowrap hover:bg-gray-200"
+                            className="px-4 py-2 bg-gray-100 rounded-xl text-xs font-bold whitespace-nowrap hover:bg-gray-200 border border-gray-200"
                           >
                             {formatRupiah(amt)}
                           </button>
@@ -672,15 +613,13 @@ const PosPage = () => {
                     </div>
                   )}
 
-                  {/* TRANSFER */}
                   {paymentMethod === 'transfer' && (
-                    <div className="space-y-4 animate-slide-up">
-                      <div className="p-4 bg-blue-50 text-blue-700 rounded-xl text-sm border border-blue-100 mb-4">
-                        Transfer ke rekening toko. Status akan menjadi{' '}
-                        <b>Pending</b> sampai dikonfirmasi.
+                    <div className="space-y-3">
+                      <div className="p-3 bg-blue-50 text-blue-700 rounded-xl text-sm border border-blue-100">
+                        Info: Status order akan menjadi <b>Pending</b>.
                       </div>
                       <select
-                        className="w-full p-3 bg-white border border-gray-200 rounded-xl"
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold"
                         value={paymentDetails.bank}
                         onChange={(e) =>
                           setPaymentDetails({
@@ -694,8 +633,8 @@ const PosPage = () => {
                         <option value="Mandiri">Mandiri</option>
                       </select>
                       <input
-                        className="w-full p-3 bg-white border border-gray-200 rounded-xl"
-                        placeholder="Nama Pengirim (Opsional)"
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl"
+                        placeholder="Nama Pengirim"
                         value={paymentDetails.senderName}
                         onChange={(e) =>
                           setPaymentDetails({
@@ -707,12 +646,8 @@ const PosPage = () => {
                     </div>
                   )}
 
-                  {/* E-WALLET */}
                   {paymentMethod === 'ewallet' && (
-                    <div className="space-y-4 animate-slide-up">
-                      <div className="p-4 bg-purple-50 text-purple-700 rounded-xl text-sm border border-purple-100 mb-4">
-                        Terima pembayaran via Dana / OVO / GoPay / ShopeePay.
-                      </div>
+                    <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-2">
                         {['Dana', 'OVO', 'GoPay', 'ShopeePay'].map((p) => (
                           <button
@@ -723,10 +658,10 @@ const PosPage = () => {
                                 provider: p,
                               })
                             }
-                            className={`p-3 rounded-xl border ${
+                            className={`p-3 rounded-xl border text-sm font-bold ${
                               paymentDetails.provider === p
-                                ? 'bg-purple-100 border-purple-500 text-purple-700'
-                                : 'bg-white border-gray-200'
+                                ? 'bg-purple-50 border-purple-500 text-purple-700'
+                                : 'bg-gray-50 border-gray-200'
                             }`}
                           >
                             {p}
@@ -734,8 +669,8 @@ const PosPage = () => {
                         ))}
                       </div>
                       <input
-                        className="w-full p-3 bg-white border border-gray-200 rounded-xl"
-                        placeholder="Nomor / Nama Akun"
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl"
+                        placeholder="Nomor / Akun"
                         value={paymentDetails.walletName}
                         onChange={(e) =>
                           setPaymentDetails({
@@ -747,17 +682,17 @@ const PosPage = () => {
                     </div>
                   )}
 
-                  {/* QRIS */}
                   {paymentMethod === 'qris' && (
-                    <div className="space-y-4 animate-slide-up text-center">
-                      <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-blue-800 text-sm">
-                        <p className="font-bold mb-1">🔍 Scan Manual</p>
-                        <p>
-                          Tunjukkan <b>Stiker QRIS</b> toko.
-                        </p>
-                      </div>
+                    <div className="text-center p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                      <QrCode
+                        size={48}
+                        className="mx-auto text-gray-400 mb-2"
+                      />
+                      <p className="text-sm text-gray-600 font-bold">
+                        Scan QRIS di Meja Kasir
+                      </p>
                       <input
-                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-center font-bold"
+                        className="mt-3 w-full p-3 bg-white border border-gray-200 rounded-xl text-center"
                         placeholder="No. Ref (Opsional)"
                         value={paymentDetails.refNumber}
                         onChange={(e) =>
@@ -772,16 +707,14 @@ const PosPage = () => {
                 </div>
               </div>
 
-              {/* STICKY FOOTER */}
-              <div className="shrink-0 sticky bottom-0 bg-white border-t border-gray-100 px-6 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+              {/* FOOTER */}
+              <div className="p-5 border-t border-gray-100 bg-white shrink-0">
                 <Button
                   onClick={handleFinalPayment}
-                  className="w-full h-14 text-lg shadow-xl shadow-primary/20"
+                  className="w-full h-14 rounded-2xl text-lg font-bold shadow-lg shadow-blue-500/30"
                 >
                   {paymentMethod === 'cash'
-                    ? `Bayar & Terima ${formatRupiah(
-                        parseFloat(cashAmount || 0)
-                      )}`
+                    ? `Bayar & Selesai`
                     : 'Simpan Transaksi'}
                 </Button>
               </div>
@@ -824,31 +757,28 @@ const CustomerModal = ({ isOpen, onClose, onSelect, customers, onAdd }) => {
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-60 flex items-center justify-center p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-70 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm py-4 px-4 sm:p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white w-full max-w-sm rounded-4xl shadow-2xl max-h-[80vh] flex flex-col relative"
+        className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] sm:max-h-[80vh] mt-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="shrink-0 sticky top-0 bg-white z-10 px-6 pt-6 pb-4 rounded-t-4xl border-b border-gray-100">
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold">Pilih Pelanggan</h3>
-            <button
-              onClick={onClose}
-              className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition-colors active:scale-95"
-            >
-              <X size={20} strokeWidth={2.5} />
-            </button>
-          </div>
+        <div className="px-6 pt-4 pb-4 border-b border-gray-100 flex justify-between items-center bg-white shrink-0">
+          <h3 className="font-bold text-lg">Pilih Pelanggan</h3>
+          <button
+            onClick={onClose}
+            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"
+          >
+            <X size={18} />
+          </button>
         </div>
-
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {!isAdd ? (
             <>
               <input
-                placeholder="Cari..."
-                className="w-full p-3 bg-gray-50 rounded-xl mb-4"
+                placeholder="Cari nama..."
+                className="w-full p-3 bg-gray-50 rounded-xl mb-3 border-none focus:ring-2 focus:ring-blue-500"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -857,7 +787,7 @@ const CustomerModal = ({ isOpen, onClose, onSelect, customers, onAdd }) => {
                   <div
                     key={c.id}
                     onClick={() => onSelect(c)}
-                    className="p-3 bg-gray-50 rounded-xl font-bold text-sm cursor-pointer hover:bg-primary/10 active:scale-98 transition-all"
+                    className="p-3 bg-gray-50 rounded-xl font-bold text-sm cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors"
                   >
                     {c.name}
                   </div>
@@ -866,34 +796,34 @@ const CustomerModal = ({ isOpen, onClose, onSelect, customers, onAdd }) => {
               <Button
                 onClick={() => setIsAdd(true)}
                 variant="outline"
-                className="border-dashed w-full"
+                className="w-full border-dashed border-2 py-6"
               >
-                + Baru
+                + Pelanggan Baru
               </Button>
             </>
           ) : (
             <div className="space-y-3">
               <input
-                placeholder="Nama"
+                placeholder="Nama Lengkap"
                 className="w-full p-3 bg-gray-50 rounded-xl"
                 value={newC.name}
                 onChange={(e) => setNewC({ ...newC, name: e.target.value })}
               />
               <input
-                placeholder="HP"
+                placeholder="Nomor HP"
                 className="w-full p-3 bg-gray-50 rounded-xl"
                 value={newC.phone}
                 onChange={(e) => setNewC({ ...newC, phone: e.target.value })}
               />
-              <Button onClick={saveNew} className="w-full">
-                Simpan
+              <Button onClick={saveNew} className="w-full h-12">
+                Simpan & Pilih
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => setIsAdd(false)}
                 className="w-full"
               >
-                Kembali
+                Batal
               </Button>
             </div>
           )}
