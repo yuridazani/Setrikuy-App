@@ -86,11 +86,17 @@ const StoreProfileSettings = () => {
     address: '',
     phone: '',
     footerMessage: '',
+    invoicePrefix: 'INV',
   });
 
   useEffect(() => {
     api.settings.get('store_profile').then(data => {
-      if (data) setProfile(data);
+      if (data) {
+        setProfile({
+          ...data,
+          invoicePrefix: data.invoicePrefix || 'INV',
+        });
+      }
     });
   }, []);
 
@@ -119,6 +125,7 @@ const StoreProfileSettings = () => {
           placeholder="Contoh: Setrikuy"
         />
       </div>
+
       <div className="space-y-2">
         <label className="text-sm font-bold text-text-muted">Alamat</label>
         <textarea
@@ -130,6 +137,7 @@ const StoreProfileSettings = () => {
           placeholder="Alamat lengkap..."
         />
       </div>
+
       <div className="space-y-2">
         <label className="text-sm font-bold text-text-muted">Nomor WA (Format: 628...)</label>
         <input
@@ -141,6 +149,23 @@ const StoreProfileSettings = () => {
           placeholder="628123456789"
         />
       </div>
+
+      {/* ✅ INPUT PREFIX NOTA */}
+      <div className="space-y-2">
+        <label className="text-sm font-bold text-text-muted">Kode Nota (Prefix)</label>
+        <input
+          name="invoicePrefix"
+          value={profile.invoicePrefix || 'INV'}
+          onChange={(e) =>
+            setProfile({ ...profile, invoicePrefix: e.target.value.toUpperCase() })
+          }
+          className="w-full p-3 bg-gray-50 rounded-xl outline-none border border-gray-200 uppercase font-mono"
+          placeholder="INV"
+          maxLength={5}
+        />
+        <p className="text-[10px] text-gray-400">Contoh: SETRIKUY-1234</p>
+      </div>
+
       <Button onClick={handleSave} className="w-full mt-4 gap-2">
         <Save size={18} /> Simpan Profil
       </Button>

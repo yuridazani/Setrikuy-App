@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { api } from '@/lib/db';
+import { useState, useEffect } from 'react';
 import { useRealtime } from '@/lib/hooks';
 import { Card } from '@/components/ui/Cards';
 import { formatRupiah } from '@/lib/utils';
@@ -7,115 +6,221 @@ import {
   AreaChart,
   Area,
   XAxis,
-  YAxis,
-  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  CartesianGrid,
 } from 'recharts';
-import { format, subDays, isSameDay, parseISO } from 'date-fns';
+import {
+  format,
+  parseISO,
+  isWithinInterval,
+  startOfDay,
+  endOfDay,
+  subDays,
+} from 'date-fns';
 import { id } from 'date-fns/locale';
-import { TrendingUp, Users, ShoppingBag } from 'lucide-react';
+import {
+  TrendingUp,
+  Users,
+  ShoppingBag,
+  Download,
+  Calendar,
+  Scale,
+} from 'lucide-react';
 
 const Reports = () => {
   const orders = useRealtime('orders');
   const customers = useRealtime('customers');
 
-  const [chartData, setChartData] = useState([]);
-  const [summary, setSummary] = useState({
-    totalOmzet: 0,
-    totalOrder: 0,
-    totalPelanggan: 0,
+  // ===== DATE RANGE (DEFAULT 7 HARI) =====
+  const [dateRange, setDateRange] = useState({
+    start: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
+    end: format(new Date(), 'yyyy-MM-dd'),
+  });
+
+  const [stats, setStats] = useState({
+    omset: 0,
+    count: 0,
+    weight: 0,
+    chart: [],
   });
 
   useEffect(() => {
-    if (!orders.length) return;
+    if (!orders) return;
 
-    // ===== SUMMARY =====
-    const totalOmzet = orders.reduce((acc, o) => acc + (o.total || 0), 0);
+    const startDate = startOfDay(parseISO(dateRange.start));
+    const endDate = endOfDay(parseISO(dateRange.end));
 
-    // ===== CHART 7 HARI =====
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = subDays(new Date(), 6 - i);
-      return {
-        date: d,
-        label: format(d, 'dd MMM', { locale: id }),
-        total: 0,
-      };
+    // ===== FILTER ORDER =====
+    const filteredOrders = orders.filter((o) => {
+      if (!o.date) return false;
+      return isWithinInterval(parseISO(o.date), {
+        start: startDate,
+        end: endDate,
+      });
     });
 
-    orders.forEach((order) => {
-      if (!order.date) return;
-      const orderDate = parseISO(order.date);
-      const day = last7Days.find((d) => isSameDay(d.date, orderDate));
-      if (day) day.total += order.total || 0;
+    // ===== TOTAL =====
+    const omset = filteredOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+    const count = filteredOrders.length;
+
+    // ===== TOTAL BERAT (KG) =====
+    const weight = filteredOrders.reduce((acc, o) => {
+      const orderWeight =
+        o.items?.reduce(
+          (w, item) =>
+            w + (item.unit === 'kg' ? item.realQty || item.qty || 0 : 0),
+          0
+        ) || 0;
+      return acc + orderWeight;
+    }, 0);
+
+    // ===== CHART PER HARI =====
+    const chartMap = {};
+    filteredOrders.forEach((o) => {
+      const key = format(parseISO(o.date), 'dd MMM', { locale: id });
+      chartMap[key] = (chartMap[key] || 0) + (o.total || 0);
     });
 
-    setChartData(last7Days);
-    setSummary({
-      totalOmzet,
-      totalOrder: orders.length,
-      totalPelanggan: customers.length,
+    const chartData = Object.keys(chartMap).map((k) => ({
+      label: k,
+      total: chartMap[k],
+    }));
+
+    setStats({ omset, count, weight, chart: chartData });
+  }, [orders, dateRange]);
+
+  // ===== EXPORT CSV =====
+  const handleExport = () => {
+    if (!orders) return;
+
+    const header =
+      'No.Nota,Tanggal,Pelanggan,Status,Total,MetodeBayar,TotalKG\n';
+
+    const startDate = startOfDay(parseISO(dateRange.start));
+    const endDate = endOfDay(parseISO(dateRange.end));
+
+    const filtered = orders.filter((o) => {
+      if (!o.date) return false;
+      return isWithinInterval(parseISO(o.date), {
+        start: startDate,
+        end: endDate,
+      });
     });
-  }, [orders, customers]);
+
+    const rows = filtered
+      .map((o) => {
+        const weight =
+          o.items?.reduce(
+            (w, item) =>
+              w + (item.unit === 'kg' ? item.realQty || item.qty || 0 : 0),
+            0
+          ) || 0;
+
+        return `${o.invoiceNumber},${o.date?.substring(
+          0,
+          10
+        )},"${o.customerName}",${o.status},${o.total},${
+          o.payment?.method || '-'
+        },${weight}`;
+      })
+      .join('\n');
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      encodeURIComponent(header + rows);
+
+    const link = document.createElement('a');
+    link.setAttribute('href', csvContent);
+    link.setAttribute(
+      'download',
+      `Laporan_Setrikuy_${dateRange.start}_${dateRange.end}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+  };
 
   return (
     <div className="p-6 pb-32 animate-slide-up space-y-6">
-      <h1 className="text-2xl font-extrabold text-text-main">Laporan Kinerja</h1>
+      <h1 className="text-2xl font-extrabold text-text-main">Laporan</h1>
 
-      {/* Ringkasan */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="p-4 bg-black text-white border-none shadow-xl">
-          <p className="text-xs text-gray-400 mb-1">Total Omzet</p>
-          <h3 className="text-xl font-bold">
-            {formatRupiah(summary.totalOmzet).split(',')[0]}
-          </h3>
-        </Card>
-
-        <div className="space-y-3">
-          <Card className="p-3 flex items-center gap-3">
-            <div className="bg-orange/10 p-2 rounded-lg text-orange">
-              <ShoppingBag size={16} />
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase">
-                Transaksi
-              </p>
-              <p className="font-bold text-lg leading-none">
-                {summary.totalOrder}
-              </p>
-            </div>
-          </Card>
-
-          <Card className="p-3 flex items-center gap-3">
-            <div className="bg-primary/10 p-2 rounded-lg text-primary">
-              <Users size={16} />
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 font-bold uppercase">
-                Pelanggan
-              </p>
-              <p className="font-bold text-lg leading-none">
-                {summary.totalPelanggan}
-              </p>
-            </div>
-          </Card>
+      {/* DATE PICKER & EXPORT */}
+      <Card className="p-4 space-y-3">
+        <div className="flex gap-2 items-center">
+          <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-200 flex items-center gap-2">
+            <Calendar size={16} className="text-gray-400" />
+            <input
+              type="date"
+              className="bg-transparent w-full text-xs font-bold outline-none"
+              value={dateRange.start}
+              onChange={(e) =>
+                setDateRange({ ...dateRange, start: e.target.value })
+              }
+            />
+          </div>
+          <span className="text-gray-400">-</span>
+          <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-200 flex items-center gap-2">
+            <input
+              type="date"
+              className="bg-transparent w-full text-xs font-bold outline-none"
+              value={dateRange.end}
+              onChange={(e) =>
+                setDateRange({ ...dateRange, end: e.target.value })
+              }
+            />
+          </div>
         </div>
+
+        <button
+          onClick={handleExport}
+          className="w-full py-3 bg-green-50 text-green-700 font-bold rounded-xl text-sm flex justify-center items-center gap-2 hover:bg-green-100 border border-green-200"
+        >
+          <Download size={18} /> Download Excel (.csv)
+        </button>
+      </Card>
+
+      {/* STATS */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard
+          icon={TrendingUp}
+          label="Total Omzet"
+          value={formatRupiah(stats.omset)}
+          color="bg-blue-50 text-blue-600"
+        />
+        <StatCard
+          icon={ShoppingBag}
+          label="Total Order"
+          value={stats.count}
+          color="bg-orange-50 text-orange-600"
+        />
+        <StatCard
+          icon={Scale}
+          label="Total Berat"
+          value={`${stats.weight.toFixed(1)} Kg`}
+          color="bg-purple-50 text-purple-600"
+        />
+        <StatCard
+          icon={Users}
+          label="Total Pelanggan"
+          value={customers?.length || 0}
+          color="bg-green-50 text-green-600"
+        />
       </div>
 
-      {/* Grafik */}
-      <Card className="p-5 border-none shadow-lg">
-        <div className="flex items-center gap-2 mb-6">
-          <div className="bg-green-100 p-2 rounded-full text-green-700">
-            <TrendingUp size={18} />
-          </div>
-          <h3 className="font-bold text-lg">Grafik 7 Hari</h3>
-        </div>
-
-        <div className="h-62.5 w-full">
+      {/* CHART */}
+      <Card className="p-6 border-none shadow-lg">
+        <h3 className="font-bold mb-4 text-gray-700">Grafik Pendapatan</h3>
+        <div className="h-64 w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData}>
+            <AreaChart data={stats.chart}>
               <defs>
-                <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient
+                  id="colorTotal"
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
                   <stop offset="5%" stopColor="#007ea7" stopOpacity={0.3} />
                   <stop offset="95%" stopColor="#007ea7" stopOpacity={0} />
                 </linearGradient>
@@ -152,12 +257,18 @@ const Reports = () => {
           </ResponsiveContainer>
         </div>
       </Card>
-
-      <div className="bg-gray-100 p-4 rounded-2xl text-center text-xs text-gray-500">
-        Data tersimpan online & realtime via Firebase ☁️
-      </div>
     </div>
   );
 };
+
+const StatCard = ({ icon: Icon, label, value, color }) => (
+  <div className={`p-4 rounded-2xl flex flex-col justify-between h-28 ${color}`}>
+    <Icon size={24} className="opacity-80" />
+    <div>
+      <p className="text-2xl font-black">{value}</p>
+      <p className="text-[10px] font-bold uppercase opacity-60">{label}</p>
+    </div>
+  </div>
+);
 
 export default Reports;

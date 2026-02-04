@@ -29,6 +29,11 @@ const PosPage = () => {
   const customers = useRealtime('customers');
   const promosRaw = useRealtime('promos');
 
+  // 🔥 SETTINGS (UNTUK PREFIX NOTA)
+  const settings = useRealtime('settings');
+  const invoicePrefix =
+    settings?.find((s) => s.id === 'main')?.invoicePrefix || 'INV';
+
   const services = servicesRaw?.filter((s) => s.isActive !== false);
   const promos = promosRaw?.filter((p) => p.isActive !== false);
 
@@ -70,7 +75,8 @@ const PosPage = () => {
           if (item.id === service.id) {
             const newQty = item.qty + 1;
             // 🔥 AUTO ADJUST: Jika min 3kg aktif dan unit kg, langsung set 3
-            const adjustedQty = useMinWeight && item.unit === 'kg' && newQty < 3 ? 3 : newQty;
+            const adjustedQty =
+              useMinWeight && item.unit === 'kg' && newQty < 3 ? 3 : newQty;
             return { ...item, qty: adjustedQty };
           }
           return item;
@@ -129,11 +135,13 @@ const PosPage = () => {
   );
 
   // ================= 🔥 ELIGIBLE PROMOS (AUTO-CHECK) =================
-  const eligiblePromos = promos?.filter((promo) => {
-    if (promo.minType === 'weight' && totalWeight >= promo.minValue) return true;
-    if (promo.minType === 'total' && subtotal >= promo.minValue) return true;
-    return false;
-  }) || [];
+  const eligiblePromos =
+    promos?.filter((promo) => {
+      if (promo.minType === 'weight' && totalWeight >= promo.minValue)
+        return true;
+      if (promo.minType === 'total' && subtotal >= promo.minValue) return true;
+      return false;
+    }) || [];
 
   // ================= CALCULATE DISCOUNT =================
   const calculateDiscount = (promo) => {
@@ -180,7 +188,8 @@ const PosPage = () => {
 
     try {
       await api.orders.add({
-        invoiceNumber: generateInvoiceNumber(),
+        // 🔥 PAKAI PREFIX DARI SETTINGS
+        invoiceNumber: generateInvoiceNumber(invoicePrefix),
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
         customerPhone: selectedCustomer.phone,
@@ -331,7 +340,7 @@ const PosPage = () => {
               className="bg-white w-full max-w-md rounded-t-4xl h-[90vh] flex flex-col relative"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* 🔥 FIXED HEADER (Ganti shrink-0ky jadi sticky) */}
+              {/* 🔥 FIXED HEADER */}
               <div className="sticky top-0 bg-white z-50 px-6 pt-6 pb-4 rounded-t-4xl border-b border-gray-100 shadow-sm shrink-0">
                 <div className="flex justify-between items-center">
                   <h2 className="text-2xl font-bold">Rincian Order</h2>
@@ -344,7 +353,7 @@ const PosPage = () => {
                 </div>
               </div>
 
-              {/* 🔥 SCROLLABLE CONTENT (Tambah overscroll-contain) */}
+              {/* 🔥 SCROLLABLE CONTENT */}
               <div className="flex-1 overflow-y-auto px-6 pt-50 pb-4 overscroll-contain">
                 {/* ===== SWITCH MIN 3KG ===== */}
                 <div className="mb-4 bg-blue-50 p-3 rounded-xl flex items-center justify-between border border-blue-100">
@@ -373,7 +382,9 @@ const PosPage = () => {
 
                 {/* 🔥 CART ITEMS */}
                 <div className="space-y-3 mb-4">
-                  <p className="text-xs font-bold text-gray-400 uppercase">Item ({cart.length})</p>
+                  <p className="text-xs font-bold text-gray-400 uppercase">
+                    Item ({cart.length})
+                  </p>
                   {cart.map((item) => (
                     <div
                       key={item.id}
@@ -416,7 +427,9 @@ const PosPage = () => {
                 {/* 🔥 PROMO SELECTOR */}
                 <div className="space-y-3 mb-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-gray-400 uppercase">Promo</p>
+                    <p className="text-xs font-bold text-gray-400 uppercase">
+                      Promo
+                    </p>
                     {eligiblePromos.length > 0 && (
                       <span className="text-[10px] bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold">
                         {eligiblePromos.length} Tersedia
@@ -429,11 +442,13 @@ const PosPage = () => {
                       {eligiblePromos.map((promo) => {
                         const discount = calculateDiscount(promo);
                         const isSelected = selectedPromo?.id === promo.id;
-                        
+
                         return (
                           <button
                             key={promo.id}
-                            onClick={() => setSelectedPromo(isSelected ? null : promo)}
+                            onClick={() =>
+                              setSelectedPromo(isSelected ? null : promo)
+                            }
                             className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
                               isSelected
                                 ? 'border-green-500 bg-green-50'
@@ -441,24 +456,50 @@ const PosPage = () => {
                             }`}
                           >
                             <div className="flex items-center gap-2 text-left">
-                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                                isSelected ? 'border-green-500 bg-green-500' : 'border-gray-300'
-                              }`}>
-                                {isSelected && <Check size={14} className="text-white" strokeWidth={3} />}
+                              <div
+                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                  isSelected
+                                    ? 'border-green-500 bg-green-500'
+                                    : 'border-gray-300'
+                                }`}
+                              >
+                                {isSelected && (
+                                  <Check
+                                    size={14}
+                                    className="text-white"
+                                    strokeWidth={3}
+                                  />
+                                )}
                               </div>
                               <div>
-                                <p className={`font-bold text-xs ${isSelected ? 'text-green-700' : 'text-gray-700'}`}>
+                                <p
+                                  className={`font-bold text-xs ${
+                                    isSelected
+                                      ? 'text-green-700'
+                                      : 'text-gray-700'
+                                  }`}
+                                >
                                   {promo.name}
                                 </p>
                                 <p className="text-[10px] text-gray-500">
-                                  {promo.type === 'percent' ? `${promo.value}%` : formatRupiah(promo.value)}
+                                  {promo.type === 'percent'
+                                    ? `${promo.value}%`
+                                    : formatRupiah(promo.value)}
                                   {' • '}
-                                  Min {promo.minValue} {promo.minType === 'weight' ? 'kg' : 'Rp'}
+                                  Min {promo.minValue}{' '}
+                                  {promo.minType === 'weight' ? 'kg' : 'Rp'}
                                 </p>
                               </div>
                             </div>
-                            <span className={`font-bold text-sm ${isSelected ? 'text-green-700' : 'text-gray-600'}`}>
-                              -{formatRupiah(discount).replace(',00', '')}
+                            <span
+                              className={`font-bold text-sm ${
+                                isSelected
+                                  ? 'text-green-700'
+                                  : 'text-gray-600'
+                              }`}
+                            >
+                              -
+                              {formatRupiah(discount).replace(',00', '')}
                             </span>
                           </button>
                         );
@@ -466,7 +507,10 @@ const PosPage = () => {
                     </div>
                   ) : (
                     <div className="text-center py-4 px-3 bg-gray-50 rounded-xl border border-gray-200">
-                      <TicketPercent size={24} className="mx-auto mb-2 text-gray-400" />
+                      <TicketPercent
+                        size={24}
+                        className="mx-auto mb-2 text-gray-400"
+                      />
                       <p className="text-xs text-gray-500">
                         Belum ada promo yang memenuhi syarat
                       </p>
@@ -492,7 +536,9 @@ const PosPage = () => {
                   </div>
                   {selectedPromo && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-green-600">Promo ({selectedPromo.name})</span>
+                      <span className="text-green-600">
+                        Promo ({selectedPromo.name})
+                      </span>
                       <span className="font-bold text-green-600">
                         -{formatRupiah(promoDiscount)}
                       </span>
@@ -777,18 +823,18 @@ const CustomerModal = ({ isOpen, onClose, onSelect, customers, onAdd }) => {
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black/60 z-60 flex items-center justify-center p-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div 
+      <div
         className="bg-white w-full max-w-sm rounded-4xl shadow-2xl max-h-[80vh] flex flex-col relative"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="shrink-0 sticky top-0 bg-white z-10 px-6 pt-6 pb-4 rounded-t-4xl border-b border-gray-100">
           <div className="flex justify-between items-center">
             <h3 className="font-bold">Pilih Pelanggan</h3>
-            <button 
+            <button
               onClick={onClose}
               className="shrink-0 w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full transition-colors active:scale-95"
             >
@@ -842,7 +888,11 @@ const CustomerModal = ({ isOpen, onClose, onSelect, customers, onAdd }) => {
               <Button onClick={saveNew} className="w-full">
                 Simpan
               </Button>
-              <Button variant="ghost" onClick={() => setIsAdd(false)} className="w-full">
+              <Button
+                variant="ghost"
+                onClick={() => setIsAdd(false)}
+                className="w-full"
+              >
                 Kembali
               </Button>
             </div>

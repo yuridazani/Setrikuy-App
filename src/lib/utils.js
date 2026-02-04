@@ -13,9 +13,10 @@ export function formatRupiah(number) {
   }).format(number);
 }
 
-export function generateInvoiceNumber() {
+// ✅ Bisa custom prefix (default: INV)
+export function generateInvoiceNumber(prefix = 'INV') {
   const date = new Date();
   const dateStr = date.toISOString().slice(2, 10).replace(/-/g, '');
   const random = Math.floor(1000 + Math.random() * 9000);
-  return `INV-${dateStr}-${random}`;
+  return `${prefix}-${dateStr}-${random}`;
 }

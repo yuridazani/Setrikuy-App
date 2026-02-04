@@ -15,11 +15,14 @@ import {
   Calendar,
   Save,
   User,
+  History,
 } from 'lucide-react';
 import { format, parseISO, addHours } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
+
+const STATUS_FLOW = ['antrian', 'proses', 'selesai', 'diambil'];
 
 const OrderDetail = () => {
   const { id: orderId } = useParams();
@@ -31,6 +34,8 @@ const OrderDetail = () => {
   const [showPreview, setShowPreview] = useState(false);
   const [damageNote, setDamageNote] = useState('');
   const [isWaModalOpen, setWaModalOpen] = useState(false);
+
+  const [autoWa, setAutoWa] = useState(false); // 🔔 Auto WA toggle
 
   // ================= LOAD DATA =================
   useEffect(() => {
@@ -58,13 +63,41 @@ const OrderDetail = () => {
     fetchData();
   }, [orderId, navigate]);
 
-  // ================= UPDATE STATUS =================
+  // ================= UPDATE STATUS + LOG + AUTO WA =================
   const handleStatusUpdate = async (newStatus) => {
     try {
-      await api.orders.update(order.id, { status: newStatus });
-      setOrder({ ...order, status: newStatus });
+      // 1. Buat log baru
+      const newLog = {
+        status: newStatus,
+        date: new Date().toISOString(),
+        updatedBy: 'Admin',
+      };
+
+      const updatedHistory = [...(order.statusHistory || []), newLog];
+
+      // 2. Update database
+      await api.orders.update(order.id, {
+        status: newStatus,
+        statusHistory: updatedHistory,
+      });
+
+      setOrder({ ...order, status: newStatus, statusHistory: updatedHistory });
       toast.success(`Status Laundry: ${newStatus}`);
-    } catch {
+
+      // 3. Auto WA trigger
+      if (autoWa) {
+        let template = '';
+        if (newStatus === 'proses') template = 'proses';
+        if (newStatus === 'selesai') template = 'selesai';
+        if (newStatus === 'diambil') template = 'ambil';
+
+        if (template) {
+          setTimeout(() => sendWA(template), 500);
+          toast.info('Membuka WhatsApp...');
+        }
+      }
+    } catch (e) {
+      console.error(e);
       toast.error('Gagal update status');
     }
   };
@@ -101,7 +134,6 @@ const OrderDetail = () => {
     return format(targetDate, 'dd MMM yyyy, HH:mm', { locale: id });
   };
 
-  const STATUS_FLOW = ['antrian', 'proses', 'selesai', 'diambil'];
   const isPaid = order?.payment?.status === 'paid';
 
   if (loading) return <div className="p-8 text-center text-gray-500">Memuat data...</div>;
@@ -168,7 +200,7 @@ ${center('TERIMA KASIH')}
 `;
   };
 
-  // ================= PRINT RAWBT (DENGAN COPY MODE) =================
+  // ================= PRINT RAWBT =================
   const handlePrintRawBT = async () => {
     const printCount = (order.printCount || 0) + 1;
     await api.orders.update(order.id, { printCount });
@@ -267,9 +299,24 @@ ${center('TERIMA KASIH')}
 
         {/* UPDATE STATUS FLOW */}
         <div className="bg-white p-4 rounded-[24px] border border-gray-100 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
-            Update Proses
-          </p>
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-text-muted">
+              Update Proses
+            </p>
+
+            {/* 🔔 AUTO WA TOGGLE */}
+            <button
+              onClick={() => setAutoWa(!autoWa)}
+              className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full transition-colors ${
+                autoWa
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-gray-100 text-gray-400'
+              }`}
+            >
+              Auto WA {autoWa ? 'ON' : 'OFF'}
+            </button>
+          </div>
+
           <div className="grid grid-cols-4 gap-2">
             {STATUS_FLOW.map((status) => (
               <button
@@ -286,6 +333,33 @@ ${center('TERIMA KASIH')}
             ))}
           </div>
         </div>
+
+        {/* 🕓 STATUS HISTORY */}
+        <Card className="p-4 border-gray-100 space-y-4">
+          <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2 text-gray-700 font-bold text-sm">
+              <History size={18} /> Riwayat Status
+            </div>
+          </div>
+
+          <div className="space-y-3 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+            {order.statusHistory?.slice().reverse().map((log, idx) => (
+              <div key={idx} className="flex justify-between text-xs">
+                <span className="capitalize font-medium text-gray-800">
+                  {log.status}
+                </span>
+                <span className="text-gray-400">
+                  {format(parseISO(log.date), 'dd/MM HH:mm')}
+                </span>
+              </div>
+            ))}
+            {(!order.statusHistory || order.statusHistory.length === 0) && (
+              <p className="text-center text-xs text-gray-300">
+                Belum ada riwayat
+              </p>
+            )}
+          </div>
+        </Card>
 
         {/* RINCIAN NOTA */}
         <Card className="border-none shadow-lg shadow-gray-100/50">
