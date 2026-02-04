@@ -4,10 +4,22 @@ import { api } from '@/lib/db';
 import { Button } from '@/components/ui/Buttons';
 import { Card } from '@/components/ui/Cards';
 import { formatRupiah } from '@/lib/utils';
-import { Printer, MessageCircle, ArrowLeft, CheckCircle, Clock, X } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
+import {
+  Printer,
+  MessageCircle,
+  ArrowLeft,
+  CheckCircle,
+  Clock,
+  X,
+  AlertTriangle,
+  Calendar,
+  Save,
+  User,
+} from 'lucide-react';
+import { format, parseISO, addHours } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const OrderDetail = () => {
   const { id: orderId } = useParams();
@@ -15,7 +27,10 @@ const OrderDetail = () => {
   const [order, setOrder] = useState(null);
   const [storeProfile, setStoreProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showPreview, setShowPreview] = useState(false); // ← state baru
+
+  const [showPreview, setShowPreview] = useState(false);
+  const [damageNote, setDamageNote] = useState('');
+  const [isWaModalOpen, setWaModalOpen] = useState(false);
 
   // ================= LOAD DATA =================
   useEffect(() => {
@@ -26,6 +41,7 @@ const OrderDetail = () => {
 
         if (orderData) {
           setOrder(orderData);
+          setDamageNote(orderData.damageNote || '');
           setStoreProfile(
             profileData || { name: 'SETRIKUY', address: 'Alamat belum diatur', phone: '-' }
           );
@@ -42,7 +58,7 @@ const OrderDetail = () => {
     fetchData();
   }, [orderId, navigate]);
 
-  // ================= UPDATE STATUS LAUNDRY =================
+  // ================= UPDATE STATUS =================
   const handleStatusUpdate = async (newStatus) => {
     try {
       await api.orders.update(order.id, { status: newStatus });
@@ -66,15 +82,33 @@ const OrderDetail = () => {
     }
   };
 
+  // ================= SIMPAN CATATAN KERUSAKAN =================
+  const handleSaveDamageNote = async () => {
+    try {
+      await api.orders.update(order.id, { damageNote });
+      setOrder({ ...order, damageNote });
+      toast.success('Catatan kerusakan disimpan');
+    } catch {
+      toast.error('Gagal menyimpan catatan');
+    }
+  };
+
+  // ================= ESTIMASI SELESAI =================
+  const getEstimation = () => {
+    if (!order?.date || !order?.items) return null;
+    const maxDuration = Math.max(...order.items.map(i => i.duration || 24));
+    const targetDate = addHours(parseISO(order.date), maxDuration);
+    return format(targetDate, 'dd MMM yyyy, HH:mm', { locale: id });
+  };
+
   const STATUS_FLOW = ['antrian', 'proses', 'selesai', 'diambil'];
+  const isPaid = order?.payment?.status === 'paid';
 
   if (loading) return <div className="p-8 text-center text-gray-500">Memuat data...</div>;
   if (!order) return null;
 
-  const isPaid = order.payment?.status === 'paid';
-
-  // ================= GENERATE RECEIPT TEXT (dipake preview + print) =================
-  const generateReceiptText = () => {
+  // ================= GENERATE RECEIPT TEXT =================
+  const generateReceiptText = (isCopy = false) => {
     const WIDTH = 32;
     const rp = (n) => {
       const num = Math.round(Number(n || 0));
@@ -105,7 +139,7 @@ const OrderDetail = () => {
 ${center(storeProfile?.address || '-')}
 ${center(storeProfile?.phone || '-')}
 ${dash}
-No. Nota : ${order.invoiceNumber}
+${isCopy ? center('** COPY / SALINAN **') + '\n' : ''}No. Nota : ${order.invoiceNumber}
 Tanggal  : ${dateStr}
 Plg      : ${(order.customerName || 'Umum').toUpperCase().substring(0, 20)}
 ${dash}
@@ -120,8 +154,8 @@ ${order.discount > 0 ? formatLine('DISKON', `-${rp(order.discount)}`) : ''}
 ${formatLine('TOTAL TAGIHAN', rp(order.total))}
 ${dash}
 ${paymentDetails}
+${order.damageNote ? `\n${dash}\n⚠️ CATATAN KERUSAKAN:\n${order.damageNote}\n` : ''}
 ${dash}
-${order.notes ? `Catatan:\n${order.notes}` : ''}
 
 ${center('SYARAT & KETENTUAN:')}
 - Wajib bawa nota saat ambil
@@ -134,46 +168,44 @@ ${center('TERIMA KASIH')}
 `;
   };
 
-  // ================= PRINT RAWBT =================
-  const handlePrintRawBT = () => {
-    const receiptText = generateReceiptText();
+  // ================= PRINT RAWBT (DENGAN COPY MODE) =================
+  const handlePrintRawBT = async () => {
+    const printCount = (order.printCount || 0) + 1;
+    await api.orders.update(order.id, { printCount });
+    setOrder({ ...order, printCount });
+
+    const isCopy = printCount > 1;
+    const receiptText = generateReceiptText(isCopy);
     const base64Data = btoa(receiptText);
     window.location.href = `rawbt:base64,${base64Data}`;
-    setShowPreview(false); // tutup modal setelah print
+    setShowPreview(false);
   };
 
-  // ================= SEND WHATSAPP =================
-  const handleSendWA = () => {
-    const customerPhone = order.customerPhone
-      ? order.customerPhone.replace(/^0/, '62')
-      : '';
-    const customerName = order.customerName || 'Pelanggan';
-    const dateStr = order.date
-      ? format(parseISO(order.date), 'dd MMM yyyy', { locale: id })
-      : '-';
+  // ================= SEND WHATSAPP TEMPLATE =================
+  const sendWA = (type) => {
+    const phone = order.customerPhone ? order.customerPhone.replace(/^0/, '62') : '';
+    const name = order.customerName || 'Kak';
+    const store = storeProfile?.name || 'Laundry Kami';
+    const estimation = getEstimation();
+    let msg = '';
 
-    const itemsList = order.items
-      .map(
-        (item) =>
-          `- ${item.name} (${item.qty}x) : ${formatRupiah(item.price * item.qty)}`
-      )
-      .join('%0a');
+    switch (type) {
+      case 'masuk':
+        msg = `Halo ${name}! Orderanmu sudah kami terima dgn nota *${order.invoiceNumber}*. Total: *${formatRupiah(order.total)}*. Estimasi selesai: ${estimation}. Terima kasih!`;
+        break;
+      case 'proses':
+        msg = `Halo ${name}! Cucianmu sedang kami proses ya 😊. Akan kami kabari jika sudah selesai. (${store})`;
+        break;
+      case 'selesai':
+        msg = `Halo ${name}! 🎉 Cucianmu sudah *SELESAI* & wangi ✨. Silakan diambil ya! Total: *${formatRupiah(order.total)}*.`;
+        break;
+      case 'ambil':
+        msg = `Halo ${name}! Terima kasih sudah mengambil cucian 🙌. Semoga puas dengan hasil setrika kami!`;
+        break;
+    }
 
-    const message =
-      `Halo Kak *${customerName}*! 👋%0a%0a` +
-      `Terima kasih sudah laundry di *${storeProfile?.name || 'SETRIKUY'}*.%0a` +
-      `Berikut detail pesanan kakak:%0a%0a` +
-      `🧾 No. Nota: *${order.invoiceNumber}*%0a` +
-      `📅 Tgl: ${dateStr}%0a%0a` +
-      `*Rincian:*%0a${itemsList}%0a` +
-      `--------------------------------%0a` +
-      `*TOTAL: ${formatRupiah(order.total)}*%0a` +
-      `--------------------------------%0a%0a` +
-      `Status Laundry: *${order.status.toUpperCase()}*%0a` +
-      `Status Bayar: *${isPaid ? 'LUNAS' : 'PENDING'}*%0a%0a` +
-      `Simpan struk ini untuk pengambilan ya kak! ✨`;
-
-    window.open(`https://wa.me/${customerPhone}?text=${message}`, '_blank');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    setWaModalOpen(false);
   };
 
   return (
@@ -189,7 +221,6 @@ ${center('TERIMA KASIH')}
 
         {/* STATUS BAR */}
         <div className="grid grid-cols-2 gap-3">
-          {/* Status Laundry */}
           <div className="bg-white p-3 rounded-2xl border border-gray-100 flex flex-col justify-center items-center text-center">
             <p className="text-[10px] uppercase font-bold text-gray-400 mb-1">
               Status Laundry
@@ -199,7 +230,6 @@ ${center('TERIMA KASIH')}
             </div>
           </div>
 
-          {/* Status Pembayaran */}
           <div
             onClick={!isPaid ? handlePaymentConfirm : undefined}
             className={`p-3 rounded-2xl border flex flex-col justify-center items-center text-center cursor-pointer ${
@@ -291,6 +321,17 @@ ${center('TERIMA KASIH')}
               ))}
             </div>
 
+            {/* ESTIMASI */}
+            <div className="bg-blue-50 p-3 rounded-xl flex items-center gap-3 border border-blue-100">
+              <Calendar size={20} className="text-blue-600" />
+              <div>
+                <p className="text-xs text-blue-600 font-bold">Estimasi Selesai</p>
+                <p className="text-sm font-black text-blue-800">
+                  {getEstimation() || '-'}
+                </p>
+              </div>
+            </div>
+
             <div className="pt-4 border-t-2 border-gray-100 space-y-2">
               <div className="flex justify-between text-sm text-text-muted">
                 <span>Subtotal</span>
@@ -343,14 +384,31 @@ ${center('TERIMA KASIH')}
                   </div>
                 </div>
               )}
-
-              {order.notes && (
-                <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded-lg mt-2">
-                  Catatan: {order.notes}
-                </div>
-              )}
             </div>
           </div>
+        </Card>
+
+        {/* 📦 CATATAN KERUSAKAN */}
+        <Card className="p-4 space-y-3 border-orange-100 bg-orange-50/30">
+          <div className="flex items-center gap-2 text-orange-700">
+            <AlertTriangle size={18} />
+            <h3 className="font-bold text-sm">Catatan Kerusakan / Khusus</h3>
+          </div>
+          <textarea
+            className="w-full p-3 rounded-xl border border-orange-200 bg-white text-sm focus:ring-2 focus:ring-orange-400 outline-none"
+            rows={2}
+            placeholder="Contoh: Kancing lepas, noda tinta di kerah..."
+            value={damageNote}
+            onChange={(e) => setDamageNote(e.target.value)}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSaveDamageNote}
+            className="w-full border-orange-200 text-orange-700 hover:bg-orange-100"
+          >
+            <Save size={16} className="mr-2" /> Simpan Catatan
+          </Button>
         </Card>
 
         {/* BUTTONS */}
@@ -358,13 +416,13 @@ ${center('TERIMA KASIH')}
           <Button
             variant="outline"
             className="flex-1 gap-2 border-primary text-primary hover:bg-primary/5"
-            onClick={() => setShowPreview(true)} // ← buka preview dulu
+            onClick={() => setShowPreview(true)}
           >
-            <Printer size={18} /> Cetak
+            <Printer size={18} /> Print {(order.printCount || 0) > 0 ? `(${order.printCount}x)` : ''}
           </Button>
           <Button
             className="flex-1 gap-2 bg-green-600 hover:bg-green-700 shadow-green-600/30"
-            onClick={handleSendWA}
+            onClick={() => setWaModalOpen(true)}
           >
             <MessageCircle size={18} /> WhatsApp
           </Button>
@@ -374,15 +432,11 @@ ${center('TERIMA KASIH')}
       {/* ================= MODAL PREVIEW STRUK ================= */}
       {showPreview && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setShowPreview(false)}
           />
-
-          {/* Modal Panel — slide up dari bawah */}
           <div className="relative w-full max-w-md bg-white rounded-t-3xl shadow-xl animate-slide-up">
-            {/* Header Modal */}
             <div className="flex items-center justify-between px-5 pt-5 pb-3">
               <h2 className="text-base font-bold">Preview Struk</h2>
               <button
@@ -393,19 +447,16 @@ ${center('TERIMA KASIH')}
               </button>
             </div>
 
-            {/* Divider */}
             <div className="mx-5 border-t border-gray-100" />
 
-            {/* Konten Struk — scrollable */}
             <div className="mx-5 mt-4 mb-4 max-h-[55vh] overflow-y-auto">
               <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-4">
                 <pre className="text-[11px] leading-[1.5] text-gray-800 whitespace-pre font-mono tracking-tight">
-                  {generateReceiptText()}
+                  {generateReceiptText((order.printCount || 0) > 0)}
                 </pre>
               </div>
             </div>
 
-            {/* Tombol Aksi */}
             <div className="px-5 pb-8 pt-2 flex gap-3">
               <Button
                 variant="outline"
@@ -424,6 +475,95 @@ ${center('TERIMA KASIH')}
           </div>
         </div>
       )}
+
+      {/* ================= MODAL PILIH TEMPLATE WA ================= */}
+      <AnimatePresence>
+        {isWaModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 z-[60] flex items-end justify-center backdrop-blur-sm"
+            onClick={() => setWaModalOpen(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className="bg-white w-full max-w-md rounded-t-3xl p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold text-lg">Pilih Pesan WhatsApp</h3>
+                <button onClick={() => setWaModalOpen(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  onClick={() => sendWA('masuk')}
+                  className="p-4 bg-gray-50 hover:bg-green-50 border border-gray-200 rounded-xl text-left flex items-center gap-3 transition-colors"
+                >
+                  <div className="bg-green-100 text-green-600 p-2 rounded-full">
+                    <MessageCircle size={18} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">Nota Order Masuk</p>
+                    <p className="text-[10px] text-gray-500">
+                      Kirim rincian nota & estimasi
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => sendWA('proses')}
+                  className="p-4 bg-gray-50 hover:bg-blue-50 border border-gray-200 rounded-xl text-left flex items-center gap-3 transition-colors"
+                >
+                  <div className="bg-blue-100 text-blue-600 p-2 rounded-full">
+                    <Clock size={18} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">Sedang Diproses</p>
+                    <p className="text-[10px] text-gray-500">
+                      Info cucian sedang dikerjakan
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => sendWA('selesai')}
+                  className="p-4 bg-gray-50 hover:bg-purple-50 border border-gray-200 rounded-xl text-left flex items-center gap-3 transition-colors"
+                >
+                  <div className="bg-purple-100 text-purple-600 p-2 rounded-full">
+                    <CheckCircle size={18} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">Order Selesai</p>
+                    <p className="text-[10px] text-gray-500">
+                      Info cucian siap diambil
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => sendWA('ambil')}
+                  className="p-4 bg-gray-50 hover:bg-orange-50 border border-gray-200 rounded-xl text-left flex items-center gap-3 transition-colors"
+                >
+                  <div className="bg-orange-100 text-orange-600 p-2 rounded-full">
+                    <User size={18} />
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm">Sudah Diambil</p>
+                    <p className="text-[10px] text-gray-500">
+                      Ucapan terima kasih
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
