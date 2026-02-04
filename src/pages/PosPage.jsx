@@ -595,7 +595,7 @@ const PosPage = () => {
               </div>
 
               {/* SCROLLABLE CONTENT */}
-              <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="flex-1 overflow-y-auto px-6 py-20">
                 <div className="bg-gray-50 p-4 rounded-2xl text-center mb-6 border border-gray-200">
                   <p className="text-xs text-gray-500 font-bold uppercase mb-1">
                     Total Tagihan
