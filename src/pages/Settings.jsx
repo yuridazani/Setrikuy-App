@@ -4,7 +4,7 @@ import { useRealtime } from '@/lib/hooks';
 import { Button } from '@/components/ui/Buttons';
 import { Card } from '@/components/ui/Cards';
 import { toast } from 'sonner';
-import { Store, Tag, Save, Trash2, Plus, CloudCheck, LogOut, Eye, EyeOff } from 'lucide-react';
+import { Store, Tag, Save, Trash2, Plus, CloudCheck, LogOut, Eye, EyeOff, Ticket } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const Settings = () => {
@@ -34,15 +34,22 @@ const Settings = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex p-1 bg-white border border-gray-200 rounded-2xl overflow-x-auto no-scrollbar">
+      <div className="flex p-1 bg-white border border-gray-200 rounded-2xl overflow-x-auto overflow-y-hidden" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <style>{`
+          .flex.p-1.bg-white::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
         <TabButton active={activeTab === 'toko'} onClick={() => setActiveTab('toko')} icon={Store} label="Profil Toko" />
         <TabButton active={activeTab === 'layanan'} onClick={() => setActiveTab('layanan')} icon={Tag} label="Layanan" />
+        <TabButton active={activeTab === 'promo'} onClick={() => setActiveTab('promo')} icon={Ticket} label="Promo" />
         <TabButton active={activeTab === 'data'} onClick={() => setActiveTab('data')} icon={CloudCheck} label="Data Cloud" />
       </div>
 
       <div className="min-h-[50vh]">
         {activeTab === 'toko' && <StoreProfileSettings />}
         {activeTab === 'layanan' && <ServicesSettings />}
+        {activeTab === 'promo' && <PromoSettings />}
         {activeTab === 'data' && (
           <div className="space-y-6">
             <DataInfo />
@@ -64,7 +71,7 @@ const Settings = () => {
 const TabButton = ({ active, onClick, icon: Icon, label }) => (
   <button
     onClick={onClick}
-    className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+    className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-bold transition-all whitespace-nowrap min-w-fit ${
       active ? 'bg-primary text-white shadow-md' : 'text-text-muted hover:bg-gray-50'
     }`}
   >
@@ -301,6 +308,180 @@ const ServicesSettings = () => {
 
         {services?.length === 0 && (
           <p className="text-center text-gray-400 py-4">Belum ada layanan. Tambahkan dulu!</p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ---------- PROMO ----------
+const PromoSettings = () => {
+  const promos = useRealtime('promos');
+  const [isAdding, setIsAdding] = useState(false);
+  const [newPromo, setNewPromo] = useState({
+    name: '',
+    type: 'percent', // percent | nominal
+    value: '',
+    minType: 'weight', // weight | total
+    minValue: '',
+    isActive: true,
+  });
+
+  const handleAdd = async () => {
+    if (!newPromo.name || !newPromo.value) return toast.error('Nama & nilai promo wajib diisi');
+
+    await api.promos.add({
+      ...newPromo,
+      value: parseInt(newPromo.value),
+      minValue: parseInt(newPromo.minValue || 0),
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    setIsAdding(false);
+    setNewPromo({ name: '', type: 'percent', value: '', minType: 'weight', minValue: '', isActive: true });
+    toast.success('Promo berhasil dibuat!');
+  };
+
+  const handleToggleActive = async (promo) => {
+    const newStatus = promo.isActive === false ? true : false;
+    await api.promos.update(promo.id, { isActive: newStatus });
+    toast.success(newStatus ? 'Promo diaktifkan' : 'Promo dinonaktifkan');
+  };
+
+  const handleDelete = async (id) => {
+    if (confirm('Hapus promo ini?')) {
+      await api.promos.delete(id);
+      toast.success('Promo dihapus');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Form Tambah Promo */}
+      {isAdding ? (
+        <Card className="p-4 space-y-3 bg-orange/5 border-orange/20">
+          <h3 className="font-bold text-orange-700">Buat Aturan Promo</h3>
+
+          <input
+            placeholder="Nama Promo (mis: Diskon 5kg+)"
+            className="w-full p-3 bg-white rounded-xl border border-gray-200"
+            value={newPromo.name}
+            onChange={e => setNewPromo({ ...newPromo, name: e.target.value })}
+          />
+
+          <div className="flex gap-2">
+            <select
+              className="p-3 bg-white rounded-xl border border-gray-200"
+              value={newPromo.type}
+              onChange={e => setNewPromo({ ...newPromo, type: e.target.value })}
+            >
+              <option value="percent">Diskon %</option>
+              <option value="nominal">Potongan Rp</option>
+            </select>
+            <input
+              type="number"
+              placeholder="Nilai (mis: 10)"
+              className="flex-1 p-3 bg-white rounded-xl border border-gray-200"
+              value={newPromo.value}
+              onChange={e => setNewPromo({ ...newPromo, value: e.target.value })}
+            />
+          </div>
+
+          <div className="p-3 bg-white rounded-xl border border-gray-200">
+            <p className="text-xs font-bold text-gray-400 mb-2 uppercase">Syarat Otomatis</p>
+            <div className="flex gap-2">
+              <select
+                className="p-2 bg-gray-50 rounded-lg text-sm"
+                value={newPromo.minType}
+                onChange={e => setNewPromo({ ...newPromo, minType: e.target.value })}
+              >
+                <option value="weight">Minimal Berat (Kg)</option>
+                <option value="total">Minimal Total (Rp)</option>
+              </select>
+              <input
+                type="number"
+                placeholder="0"
+                className="flex-1 p-2 bg-gray-50 rounded-lg text-sm"
+                value={newPromo.minValue}
+                onChange={e => setNewPromo({ ...newPromo, minValue: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setIsAdding(false)} className="flex-1">
+              Batal
+            </Button>
+            <Button onClick={handleAdd} className="flex-1 bg-orange-500 hover:bg-orange-600">
+              Simpan Promo
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <Button
+          variant="outline"
+          className="w-full border-dashed border-2 py-6 text-text-muted hover:text-orange-600 hover:border-orange-500 hover:bg-orange-50"
+          onClick={() => setIsAdding(true)}
+        >
+          <Ticket size={20} className="mr-2" /> Tambah Aturan Promo
+        </Button>
+      )}
+
+      {/* List Promo */}
+      <div className="space-y-3">
+        {promos?.map(promo => {
+          const isActive = promo.isActive !== false;
+          return (
+            <Card
+              key={promo.id}
+              className={`p-4 flex justify-between items-center border-l-4 transition-all ${
+                isActive ? 'border-l-orange-500' : 'border-l-gray-300 bg-gray-100 opacity-70'
+              }`}
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-text-main">{promo.name}</h4>
+                  {!isActive && (
+                    <span className="text-[10px] bg-gray-300 text-gray-600 px-2 py-0.5 rounded font-bold">
+                      NON-AKTIF
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-text-muted">
+                  Potongan {promo.type === 'percent' ? `${promo.value}%` : `Rp ${promo.value.toLocaleString()}`}
+                  {' • '}
+                  Syarat: Min {promo.minValue} {promo.minType === 'weight' ? 'Kg' : 'Rp'}
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                {/* Toggle Aktif / Nonaktif */}
+                <button
+                  onClick={() => handleToggleActive(promo)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                      : 'bg-gray-200 text-gray-500'
+                  }`}
+                >
+                  {isActive ? <Eye size={18} /> : <EyeOff size={18} />}
+                </button>
+
+                {/* Delete */}
+                <button
+                  onClick={() => handleDelete(promo.id)}
+                  className="p-2 text-danger bg-danger/10 rounded-lg hover:bg-danger hover:text-white transition-colors"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </Card>
+          );
+        })}
+
+        {promos?.length === 0 && (
+          <p className="text-center text-gray-400 py-4">Belum ada promo. Tambahkan dulu!</p>
         )}
       </div>
     </div>
