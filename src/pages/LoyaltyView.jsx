@@ -88,13 +88,13 @@ const LoyaltyView = () => {
       >
         {/* SVG CARD - Otomatis berubah sesuai stamp count */}
         <motion.img
-          key={currentStamps}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-          src={`/src/assets/loyalty card/${currentStamps + 1}.svg`}
-          alt={`Loyalty Card - ${currentStamps} stamps`}
-          className="w-full h-auto"
+            key={currentStamps}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            src={`/loyalty card/${currentStamps + 1}.svg`}  
+            alt={`Loyalty Card - ${currentStamps} stamps`}
+            className="w-full h-auto"
         />
         
         {/* OPTIONAL: Text Overlay jika perlu */}

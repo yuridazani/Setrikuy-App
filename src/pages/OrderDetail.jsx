@@ -265,7 +265,6 @@ ${center('TERIMA KASIH')}
     setWaModalOpen(false);
   };
 
-  // ================= ✅ FIX 4: SEND LOYALTY CARD LINK (PAKAI DATA CUSTOMER!) =================
   const sendLoyaltyLink = async () => {
     const phone = order.customerPhone ? order.customerPhone.replace(/^0/, '62') : '';
     if (!phone) {
@@ -273,29 +272,33 @@ ${center('TERIMA KASIH')}
       return;
     }
     
-    // ✅ REFRESH CUSTOMER DATA DULU BIAR DAPAT STAMPS TERBARU!
     let currentStamps = 0;
+    let customerName = '';
+    
     try {
       if (order.customerId) {
         const freshCustomer = await api.customers.get(order.customerId);
-        currentStamps = freshCustomer?.stamps || 0;
-        setCustomerData(freshCustomer); // Update state juga
+        if (freshCustomer) {
+          currentStamps = freshCustomer.stamps || 0;
+          customerName = freshCustomer.name || order.customerName || 'Kak';
+          setCustomerData(freshCustomer); // Update state
+        }
       }
     } catch (error) {
-      console.error('Error fetching customer stamps:', error);
-      // Fallback ke data customer yang udah di-load sebelumnya
+      console.error('Error fetching customer:', error);
+      // Fallback ke data yang sudah ada
       currentStamps = customerData?.stamps || 0;
+      customerName = order.customerName || 'Kak';
     }
     
     const loyaltyLink = `${window.location.origin}/loyalty/${order.customerId}`;
-    const name = order.customerName || 'Kak';
     
-    const message = `Halo ${name}!\n\n*Cek Loyalty Card Kamu!*\n\nStamp Terkumpul: ${currentStamps}\n\nLink Card:\n${loyaltyLink}\n\nTerima kasih!`;
+    const message = `Halo ${customerName}!\n\n*Cek Loyalty Card Kamu!*\n\nStamp Terkumpul: ${currentStamps}\n\nLink Card:\n${loyaltyLink}\n\nTerima kasih!`;
     
     const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
     toast.success('Link loyalty card dikirim!');
-    setWaModalOpen(false); // ✅ CLOSE MODAL SETELAH KIRIM
+    setWaModalOpen(false);
   };
 
   // ✅ TAMBAH HANDLER UNTUK REFRESH SETTINGS SEBELUM PREVIEW
