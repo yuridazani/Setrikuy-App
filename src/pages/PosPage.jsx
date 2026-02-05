@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '@/lib/db';
 import { useRealtime } from '@/lib/hooks';
 import { Card } from '@/components/ui/Cards';
@@ -35,8 +35,13 @@ const PosPage = () => {
   const promosRaw = useRealtime('promos');
 
   const settings = useRealtime('settings');
-  const invoicePrefix =
-    settings?.find((s) => s.id === 'main')?.invoicePrefix || 'INV';
+  const [invoicePrefix, setInvoicePrefix] = useState('SKUY');
+
+  useEffect(() => {
+    const prefix =
+      settings?.find((s) => s.id === 'main')?.invoicePrefix || 'SKUY';
+    setInvoicePrefix(prefix);
+  }, [settings]);
 
   const services = servicesRaw?.filter((s) => s.isActive !== false);
   const promos = promosRaw?.filter((p) => p.isActive !== false);

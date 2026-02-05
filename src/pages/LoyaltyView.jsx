@@ -43,7 +43,7 @@ const LoyaltyView = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-900 via-orange-800 to-orange-900 p-6 flex items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-orange-900 via-orange-800 to-orange-900 p-6 flex items-center justify-center">
         <div className="text-center text-white">
           <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="font-bold">Memuat kartu loyalty...</p>
@@ -54,7 +54,7 @@ const LoyaltyView = () => {
 
   if (!customer) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-900 via-orange-800 to-orange-900 p-6 flex flex-col items-center justify-center">
+      <div className="min-h-screen bg-linear-to-br from-orange-900 via-orange-800 to-orange-900 p-6 flex flex-col items-center justify-center">
         <div className="text-center text-white space-y-4">
           <div className="text-2xl font-black flex items-center justify-center gap-2">
             <AlertTriangle size={28} className="text-yellow-300" />
@@ -67,7 +67,7 @@ const LoyaltyView = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-900 via-orange-800 to-orange-900 p-6 flex flex-col items-center">
+    <div className="min-h-screen bg-linear-to-br from-orange-900 via-orange-800 to-orange-900 p-6 flex flex-col items-center">
       {/* HEADER */}
       <div className="w-full flex items-center justify-between mb-8 pt-2">
         <button
@@ -118,7 +118,7 @@ const LoyaltyView = () => {
               initial={{ width: 0 }}
               animate={{ width: `${progressPercent}%` }}
               transition={{ duration: 0.8, ease: 'easeOut' }}
-              className="bg-gradient-to-r from-orange-300 to-orange-500 h-full rounded-full"
+              className="bg-linear-to-r from-orange-300 to-orange-500 h-full rounded-full"
             />
           </div>
         </div>
@@ -172,7 +172,7 @@ const LoyaltyView = () => {
                 transition={{ delay: idx * 0.1 }}
                 className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-lg p-3 flex items-start gap-2"
               >
-                <Gift size={16} className="text-yellow-300 mt-1 flex-shrink-0" />
+                <Gift size={16} className="text-yellow-300 mt-1 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-white truncate">{reward.name || reward.rewardName}</p>
                   <p className="text-[10px] text-white/60">

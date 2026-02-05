@@ -30,20 +30,21 @@ const OrderDetail = () => {
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [storeProfile, setStoreProfile] = useState(null);
+  const [customerData, setCustomerData] = useState(null); // ✅ TAMBAH STATE CUSTOMER
   const [loading, setLoading] = useState(true);
 
   const [showPreview, setShowPreview] = useState(false);
   const [damageNote, setDamageNote] = useState('');
   const [isWaModalOpen, setWaModalOpen] = useState(false);
 
-  const [autoWa, setAutoWa] = useState(false); // 🔔 Auto WA toggle
+  const [autoWa, setAutoWa] = useState(false);
 
-  // ================= LOAD DATA =================
+  // ================= ✅ FIX 1: LOAD DATA + REALTIME REFRESH SETTINGS =================
   useEffect(() => {
     const fetchData = async () => {
       try {
         const orderData = await api.orders.get(orderId);
-        const profileData = await api.settings.get('store_profile');
+        const profileData = await api.settings.get('main');
 
         if (orderData) {
           setOrder(orderData);
@@ -51,6 +52,12 @@ const OrderDetail = () => {
           setStoreProfile(
             profileData || { name: 'SETRIKUY', address: 'Alamat belum diatur', phone: '-' }
           );
+
+          // ✅ LOAD CUSTOMER DATA UNTUK AMBIL STAMPS
+          if (orderData.customerId) {
+            const customer = await api.customers.get(orderData.customerId);
+            setCustomerData(customer);
+          }
         } else {
           toast.error('Order tidak ditemukan');
           navigate('/orders');
@@ -64,10 +71,21 @@ const OrderDetail = () => {
     fetchData();
   }, [orderId, navigate]);
 
+  // ✅ FIX 2: TAMBAH FUNCTION REFRESH SETTINGS (dipanggil sebelum print/preview)
+  const refreshSettings = async () => {
+    try {
+      const profileData = await api.settings.get('main');
+      if (profileData) {
+        setStoreProfile(profileData);
+      }
+    } catch (error) {
+      console.error('Error refreshing settings:', error);
+    }
+  };
+
   // ================= UPDATE STATUS + LOG + AUTO WA =================
   const handleStatusUpdate = async (newStatus) => {
     try {
-      // 1. Buat log baru
       const newLog = {
         status: newStatus,
         date: new Date().toISOString(),
@@ -76,7 +94,6 @@ const OrderDetail = () => {
 
       const updatedHistory = [...(order.statusHistory || []), newLog];
 
-      // 2. Update database
       await api.orders.update(order.id, {
         status: newStatus,
         statusHistory: updatedHistory,
@@ -85,7 +102,6 @@ const OrderDetail = () => {
       setOrder({ ...order, status: newStatus, statusHistory: updatedHistory });
       toast.success(`Status Laundry: ${newStatus}`);
 
-      // 3. Auto WA trigger
       if (autoWa) {
         let template = '';
         if (newStatus === 'proses') template = 'proses';
@@ -182,7 +198,12 @@ ${order.items.map(item => {
   return `${item.name.substring(0, WIDTH)}\n${formatLine(math, total)}`;
 }).join('\n')}
 ${dash}
-${formatLine('SUBTOTAL', rp(order.subtotal || order.total))}
+${order.delivery?.type === 'delivery' 
+  ? `PENGIRIMAN: ${order.delivery.distance}km\n${formatLine('ONGKIR', rp(order.delivery.cost))}\n${dash}\n`
+  : order.delivery?.type === 'dropoff' 
+  ? `PENGAMBILAN: Drop-off\n${dash}\n`
+  : `${dash}\n`
+}${formatLine('SUBTOTAL', rp(order.subtotal || order.total))}
 ${order.discount > 0 ? formatLine('DISKON', `-${rp(order.discount)}`) : ''}
 ${formatLine('TOTAL TAGIHAN', rp(order.total))}
 ${dash}
@@ -201,8 +222,11 @@ ${center('TERIMA KASIH')}
 `;
   };
 
-  // ================= PRINT RAWBT =================
+  // ================= ✅ FIX 3: PRINT RAWBT (REFRESH SETTINGS DULU!) =================
   const handlePrintRawBT = async () => {
+    // ✅ REFRESH SETTINGS SEBELUM PRINT!
+    await refreshSettings();
+    
     const printCount = (order.printCount || 0) + 1;
     await api.orders.update(order.id, { printCount });
     setOrder({ ...order, printCount });
@@ -241,23 +265,43 @@ ${center('TERIMA KASIH')}
     setWaModalOpen(false);
   };
 
-  // ================= SEND LOYALTY CARD LINK =================
-  const sendLoyaltyLink = () => {
+  // ================= ✅ FIX 4: SEND LOYALTY CARD LINK (PAKAI DATA CUSTOMER!) =================
+  const sendLoyaltyLink = async () => {
     const phone = order.customerPhone ? order.customerPhone.replace(/^0/, '62') : '';
     if (!phone) {
       toast.error('Nomor WhatsApp tidak tersedia');
       return;
     }
     
+    // ✅ REFRESH CUSTOMER DATA DULU BIAR DAPAT STAMPS TERBARU!
+    let currentStamps = 0;
+    try {
+      if (order.customerId) {
+        const freshCustomer = await api.customers.get(order.customerId);
+        currentStamps = freshCustomer?.stamps || 0;
+        setCustomerData(freshCustomer); // Update state juga
+      }
+    } catch (error) {
+      console.error('Error fetching customer stamps:', error);
+      // Fallback ke data customer yang udah di-load sebelumnya
+      currentStamps = customerData?.stamps || 0;
+    }
+    
     const loyaltyLink = `${window.location.origin}/loyalty/${order.customerId}`;
     const name = order.customerName || 'Kak';
-    const stamps = order.stamps || 0;
     
-    const message = `Halo ${name}!\n\n*Cek Loyalty Card Kamu!*\n\nStamp Terkumpul: ${stamps}\n\nLink Card:\n${loyaltyLink}\n\nTerima kasih!`;
+    const message = `Halo ${name}!\n\n*Cek Loyalty Card Kamu!*\n\nStamp Terkumpul: ${currentStamps}\n\nLink Card:\n${loyaltyLink}\n\nTerima kasih!`;
     
     const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, '_blank');
     toast.success('Link loyalty card dikirim!');
+    setWaModalOpen(false); // ✅ CLOSE MODAL SETELAH KIRIM
+  };
+
+  // ✅ TAMBAH HANDLER UNTUK REFRESH SETTINGS SEBELUM PREVIEW
+  const handleShowPreview = async () => {
+    await refreshSettings();
+    setShowPreview(true);
   };
 
   return (
@@ -324,7 +368,6 @@ ${center('TERIMA KASIH')}
               Update Proses
             </p>
 
-            {/* 🔔 AUTO WA TOGGLE */}
             <button
               onClick={() => setAutoWa(!autoWa)}
               className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-full transition-colors ${
@@ -354,7 +397,7 @@ ${center('TERIMA KASIH')}
           </div>
         </div>
 
-        {/* 🕓 STATUS HISTORY */}
+        {/* STATUS HISTORY */}
         <Card className="p-4 border-gray-100 space-y-4">
           <div className="flex justify-between items-center border-b border-gray-100 pb-3">
             <div className="flex items-center gap-2 text-gray-700 font-bold text-sm">
@@ -437,7 +480,6 @@ ${center('TERIMA KASIH')}
                   <span>- {formatRupiah(order.discount)}</span>
                 </div>
               )}
-              {/* ✅ DELIVERY COST */}
               {order.delivery?.cost > 0 && (
                 <div className="flex justify-between text-sm text-orange-600 font-bold">
                   <span>Ongkir ({order.delivery?.distance}km)</span>
@@ -494,7 +536,7 @@ ${center('TERIMA KASIH')}
           </div>
         </Card>
 
-        {/* 📦 CATATAN KERUSAKAN */}
+        {/* CATATAN KERUSAKAN */}
         <Card className="p-4 space-y-3 border-orange-100 bg-orange-50/30">
           <div className="flex items-center gap-2 text-orange-700">
             <AlertTriangle size={18} />
@@ -522,7 +564,7 @@ ${center('TERIMA KASIH')}
           <Button
             variant="outline"
             className="flex-1 gap-2 border-primary text-primary hover:bg-primary/5"
-            onClick={() => setShowPreview(true)}
+            onClick={handleShowPreview}
           >
             <Printer size={18} /> Print {(order.printCount || 0) > 0 ? `(${order.printCount}x)` : ''}
           </Button>
@@ -535,7 +577,7 @@ ${center('TERIMA KASIH')}
         </div>
       </div>
 
-      {/* ================= MODAL PREVIEW STRUK ================= */}
+      {/* MODAL PREVIEW STRUK */}
       {showPreview && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
           <div
@@ -582,7 +624,7 @@ ${center('TERIMA KASIH')}
         </div>
       )}
 
-      {/* ================= MODAL PILIH TEMPLATE WA ================= */}
+      {/* MODAL PILIH TEMPLATE WA */}
       <AnimatePresence>
         {isWaModalOpen && (
           <motion.div
@@ -666,11 +708,10 @@ ${center('TERIMA KASIH')}
                   </div>
                 </button>
 
-                {/* ⭐ TAMBAH BUTTON INI UNTUK LOYALTY CARD */}
                 <div className="border-t border-gray-200 pt-3 mt-2">
                   <button
                     onClick={sendLoyaltyLink}
-                    className="w-full p-4 bg-gradient-to-r from-orange-50 to-yellow-50 hover:from-orange-100 hover:to-yellow-100 border border-orange-200 rounded-xl text-left flex items-center gap-3 transition-colors"
+                    className="w-full p-4 bg-linear-to-r from-orange-50 to-yellow-50 hover:from-orange-100 hover:to-yellow-100 border border-orange-200 rounded-xl text-left flex items-center gap-3 transition-colors"
                   >
                     <div className="bg-orange-200 text-orange-700 p-2 rounded-full">
                       <Gift size={18} />

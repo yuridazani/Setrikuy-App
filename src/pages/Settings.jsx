@@ -94,7 +94,7 @@ const StoreProfileSettings = () => {
     address: '',
     phone: '',
     footerMessage: '',
-    invoicePrefix: 'INV',
+    invoicePrefix: 'SKUY',
     minKiloan: 2,
     minDelivery: 15000,
   });
