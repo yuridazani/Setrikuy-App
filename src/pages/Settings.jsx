@@ -4,8 +4,12 @@ import { useRealtime } from '@/lib/hooks';
 import { Button } from '@/components/ui/Buttons';
 import { Card } from '@/components/ui/Cards';
 import { toast } from 'sonner';
-import { Store, Tag, Save, Trash2, Plus, CloudCheck, LogOut, Eye, EyeOff, Ticket } from 'lucide-react';
+import { 
+  Store, Tag, Save, Trash2, Plus, CloudCheck, LogOut, 
+  Eye, EyeOff, Ticket, Award, Edit3, X, Users 
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('toko');
@@ -42,14 +46,18 @@ const Settings = () => {
         `}</style>
         <TabButton active={activeTab === 'toko'} onClick={() => setActiveTab('toko')} icon={Store} label="Profil Toko" />
         <TabButton active={activeTab === 'layanan'} onClick={() => setActiveTab('layanan')} icon={Tag} label="Layanan" />
+        <TabButton active={activeTab === 'pelanggan'} onClick={() => setActiveTab('pelanggan')} icon={Users} label="Pelanggan" />
         <TabButton active={activeTab === 'promo'} onClick={() => setActiveTab('promo')} icon={Ticket} label="Promo" />
+        <TabButton active={activeTab === 'loyalty'} onClick={() => setActiveTab('loyalty')} icon={Award} label="Loyalty" />
         <TabButton active={activeTab === 'data'} onClick={() => setActiveTab('data')} icon={CloudCheck} label="Data Cloud" />
       </div>
 
       <div className="min-h-[50vh]">
         {activeTab === 'toko' && <StoreProfileSettings />}
         {activeTab === 'layanan' && <ServicesSettings />}
+        {activeTab === 'pelanggan' && <CustomersSettings />}
         {activeTab === 'promo' && <PromoSettings />}
+        {activeTab === 'loyalty' && <LoyaltySettings />}
         {activeTab === 'data' && (
           <div className="space-y-6">
             <DataInfo />
@@ -87,14 +95,21 @@ const StoreProfileSettings = () => {
     phone: '',
     footerMessage: '',
     invoicePrefix: 'INV',
+    minKiloan: 2,
+    minDelivery: 15000,
   });
 
   useEffect(() => {
-    api.settings.get('store_profile').then(data => {
+    api.settings.get('main').then(data => {
       if (data) {
         setProfile({
-          ...data,
+          name: data.name || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          footerMessage: data.footerMessage || '',
           invoicePrefix: data.invoicePrefix || 'INV',
+          minKiloan: data.minKiloan || 2,
+          minDelivery: data.minDelivery || 15000,
         });
       }
     });
@@ -106,7 +121,7 @@ const StoreProfileSettings = () => {
 
   const handleSave = async () => {
     try {
-      await api.settings.save('store_profile', profile);
+      await api.settings.save('main', profile);
       toast.success('Profil toko berhasil disimpan!');
     } catch {
       toast.error('Gagal menyimpan profil');
@@ -166,6 +181,28 @@ const StoreProfileSettings = () => {
         <p className="text-[10px] text-gray-400">Contoh: SETRIKUY-1234</p>
       </div>
 
+      {/* ✅ FIELD BARU: MIN KILOAN & MIN DELIVERY */}
+      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase">Min. Kiloan (Kg)</label>
+          <input 
+            type="number" 
+            className="w-full p-3 bg-gray-50 rounded-xl font-bold" 
+            value={profile.minKiloan || 2} 
+            onChange={e => setProfile({ ...profile, minKiloan: parseFloat(e.target.value || 0) })} 
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase">Min. Delivery (Rp)</label>
+          <input 
+            type="number" 
+            className="w-full p-3 bg-gray-50 rounded-xl font-bold" 
+            value={profile.minDelivery || 15000} 
+            onChange={e => setProfile({ ...profile, minDelivery: parseInt(e.target.value || 0) })} 
+          />
+        </div>
+      </div>
+
       <Button onClick={handleSave} className="w-full mt-4 gap-2">
         <Save size={18} /> Simpan Profil
       </Button>
@@ -173,11 +210,12 @@ const StoreProfileSettings = () => {
   );
 };
 
-// ---------- LAYANAN ----------
+// ================= LAYANAN (EDIT + TOGGLE + HAPUS) =================
 const ServicesSettings = () => {
   const services = useRealtime('services');
 
   const [isAdding, setIsAdding] = useState(false);
+  const [editingService, setEditingService] = useState(null);
   const [newService, setNewService] = useState({
     name: '',
     price: '',
@@ -203,7 +241,7 @@ const ServicesSettings = () => {
   };
 
   const handleToggleActive = async (service) => {
-    const newStatus = service.isActive === false ? true : false; // undefined dianggap aktif
+    const newStatus = service.isActive === false ? true : false;
     await api.services.update(service.id, { isActive: newStatus });
     toast.success(newStatus ? 'Layanan diaktifkan' : 'Layanan dinonaktifkan');
   };
@@ -213,6 +251,13 @@ const ServicesSettings = () => {
       await api.services.delete(id);
       toast.success('Layanan dihapus');
     }
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    await api.services.update(editingService.id, editingService);
+    setEditingService(null);
+    toast.success('Layanan berhasil diperbarui');
   };
 
   return (
@@ -307,6 +352,14 @@ const ServicesSettings = () => {
               </div>
 
               <div className="flex gap-2">
+                {/* Edit */}
+                <button
+                  onClick={() => setEditingService(service)}
+                  className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
+                >
+                  <Edit3 size={18} />
+                </button>
+
                 {/* Toggle Aktif / Nonaktif */}
                 <button
                   onClick={() => handleToggleActive(service)}
@@ -335,6 +388,159 @@ const ServicesSettings = () => {
           <p className="text-center text-gray-400 py-4">Belum ada layanan. Tambahkan dulu!</p>
         )}
       </div>
+
+      {/* MODAL EDIT LAYANAN */}
+      <AnimatePresence>
+        {editingService && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl"
+            >
+              <div className="flex justify-between mb-4">
+                <h3 className="font-bold text-lg">Edit Layanan</h3>
+                <button onClick={() => setEditingService(null)}>
+                  <X />
+                </button>
+              </div>
+              <form onSubmit={handleUpdate} className="space-y-3">
+                <input
+                  className="w-full p-3 bg-gray-50 rounded-xl"
+                  value={editingService.name}
+                  onChange={e => setEditingService({ ...editingService, name: e.target.value })}
+                  placeholder="Nama"
+                />
+                <input
+                  type="number"
+                  className="w-full p-3 bg-gray-50 rounded-xl"
+                  value={editingService.price}
+                  onChange={e => setEditingService({ ...editingService, price: parseInt(e.target.value || 0) })}
+                  placeholder="Harga"
+                />
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" onClick={() => setEditingService(null)} className="flex-1">
+                    Batal
+                  </Button>
+                  <Button type="submit" className="flex-1">
+                    Simpan
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ================= PELANGGAN (EDIT + HAPUS) =================
+const CustomersSettings = () => {
+  const customers = useRealtime('customers');
+  const [editingCust, setEditingCust] = useState(null);
+
+  const handleDelete = async (id) => {
+    if (confirm('Hapus data pelanggan ini? Seluruh riwayat stamp juga akan hilang.')) {
+      await api.customers.delete(id);
+      toast.success('Data pelanggan dihapus');
+    }
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    await api.customers.update(editingCust.id, editingCust);
+    setEditingCust(null);
+    toast.success('Data pelanggan diperbarui');
+  };
+
+  return (
+    <div className="space-y-3">
+      {customers?.map(c => (
+        <Card key={c.id} className="p-4 flex justify-between items-center bg-white shadow-sm">
+          <div>
+            <h4 className="font-bold text-gray-800">{c.name}</h4>
+            <p className="text-xs text-gray-400">
+              {c.phone || 'Tanpa No. HP'} • ⭐ {c.stamps || 0} Stamp
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setEditingCust(c)}
+              className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100"
+            >
+              <Edit3 size={18} />
+            </button>
+            <button
+              onClick={() => handleDelete(c.id)}
+              className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100"
+            >
+              <Trash2 size={18} />
+            </button>
+          </div>
+        </Card>
+      ))}
+
+      {customers?.length === 0 && (
+        <p className="text-center text-gray-400 py-4">Belum ada pelanggan.</p>
+      )}
+
+      {/* MODAL EDIT PELANGGAN */}
+      <AnimatePresence>
+        {editingCust && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl"
+            >
+              <div className="flex justify-between mb-4">
+                <h3 className="font-bold text-lg">Edit Data Pelanggan</h3>
+                <button onClick={() => setEditingCust(null)}>
+                  <X />
+                </button>
+              </div>
+              <form onSubmit={handleUpdate} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-gray-400 block mb-1 uppercase">Nama</label>
+                  <input
+                    className="w-full p-3 bg-gray-50 rounded-xl"
+                    value={editingCust.name}
+                    onChange={e => setEditingCust({ ...editingCust, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-400 block mb-1 uppercase">Nomor HP</label>
+                  <input
+                    className="w-full p-3 bg-gray-50 rounded-xl"
+                    value={editingCust.phone || ''}
+                    onChange={e => setEditingCust({ ...editingCust, phone: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-400 block mb-1 uppercase">Stamp Manual</label>
+                  <input
+                    type="number"
+                    className="w-full p-3 bg-gray-50 rounded-xl"
+                    value={editingCust.stamps || 0}
+                    onChange={e => setEditingCust({ ...editingCust, stamps: parseInt(e.target.value || 0) })}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" onClick={() => setEditingCust(null)} className="flex-1">
+                    Batal
+                  </Button>
+                  <Button type="submit" className="flex-1">
+                    Simpan Perubahan
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -513,6 +719,155 @@ const PromoSettings = () => {
   );
 };
 
+// ---------- LOYALTY / STAMP (KASIR DAPAT REDEEM) ----------
+const LoyaltySettings = () => {
+  const customers = useRealtime('customers');
+  const [config, setConfig] = useState({
+    isActive: true,
+    minTrxPerStamp: 20000,
+    maxStamps: 10,
+    rewardOption: 'Gratis 3kg Santuy'
+  });
+  const [selectedForRedeem, setSelectedForRedeem] = useState(null);
+  const [redeemLoading, setRedeemLoading] = useState(false);
+
+  useEffect(() => {
+    api.settings.get('loyalty_config').then(data => data && setConfig(data));
+  }, []);
+
+  const handleSave = async () => {
+    try {
+      await api.settings.save('loyalty_config', config);
+      toast.success('Pengaturan Loyalty disimpan!');
+    } catch (error) {
+      toast.error('Gagal menyimpan pengaturan');
+    }
+  };
+
+  const handleRedeem = async (customer) => {
+    if (customer.stamps < 10) {
+      toast.error(`Stamp belum cukup (${customer.stamps}/10)`);
+      return;
+    }
+
+    setRedeemLoading(true);
+    try {
+      await api.customers.redeemReward(customer.id, config.rewardOption, config.rewardOption);
+      toast.success(`Reward diberikan ke ${customer.name}!`);
+      setSelectedForRedeem(null);
+    } catch (error) {
+      toast.error('Gagal memberikan reward');
+    } finally {
+      setRedeemLoading(false);
+    }
+  };
+
+  const customersReadyForRedeem = customers?.filter(c => (c.stamps || 0) >= 10) || [];
+
+  return (
+    <div className="space-y-6">
+      {/* KONFIGURASI */}
+      <Card className="p-6 space-y-4 border-t-4 border-primary">
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-lg">Program Loyalitas (Stamp)</h3>
+          <button 
+            onClick={() => setConfig({ ...config, isActive: !config.isActive })}
+            className={`w-12 h-6 rounded-full p-1 transition-all ${config.isActive ? 'bg-green-500' : 'bg-gray-300'}`}
+          >
+            <div className={`w-4 h-4 bg-white rounded-full transition-all ${config.isActive ? 'ml-6' : 'ml-0'}`} />
+          </button>
+        </div>
+
+        {config.isActive && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-400">MIN. BELANJA PER STAMP</label>
+                <input
+                  type="number"
+                  className="w-full p-3 bg-gray-50 rounded-xl"
+                  value={config.minTrxPerStamp}
+                  onChange={e => setConfig({ ...config, minTrxPerStamp: parseInt(e.target.value || 0) })}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-400">TARGET STAMP</label>
+                <input
+                  type="number"
+                  className="w-full p-3 bg-gray-50 rounded-xl"
+                  value={config.maxStamps}
+                  onChange={e => setConfig({ ...config, maxStamps: parseInt(e.target.value || 0) })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-gray-400">HADIAH REWARD</label>
+              <select
+                className="w-full p-3 bg-gray-50 rounded-xl"
+                value={config.rewardOption}
+                onChange={e => setConfig({ ...config, rewardOption: e.target.value })}
+              >
+                <option>Gratis 3kg Santuy</option>
+                <option>Potongan Rp 12.000</option>
+                <option>Diskon 50% All Item</option>
+              </select>
+            </div>
+
+            <Button onClick={handleSave} className="w-full">
+              <Save size={18} /> Simpan Konfigurasi
+            </Button>
+          </div>
+        )}
+      </Card>
+
+      {/* REDEEM REWARDS */}
+      {config.isActive && (
+        <Card className="p-6 space-y-4 border-l-4 border-l-orange-500">
+          <h3 className="font-bold text-lg flex items-center gap-2">
+            <Award size={20} className="text-orange-500" />
+            Redeem Reward Manual
+          </h3>
+
+          {customersReadyForRedeem.length > 0 ? (
+            <div className="space-y-3">
+              <p className="text-xs text-gray-500 font-bold">
+                {customersReadyForRedeem.length} pelanggan siap redeem
+              </p>
+              {customersReadyForRedeem.map(customer => (
+                <div
+                  key={customer.id}
+                  className="flex items-center justify-between bg-orange-50 p-4 rounded-xl border border-orange-200"
+                >
+                  <div>
+                    <h4 className="font-bold text-text-main">{customer.name}</h4>
+                    <p className="text-xs text-orange-600 font-bold">
+                      ⭐ {customer.stamps}/{config.maxStamps} STAMPS
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => handleRedeem(customer)}
+                    disabled={redeemLoading}
+                    className="bg-orange-500 hover:bg-orange-600"
+                  >
+                    {redeemLoading ? '...' : 'Redeem'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 text-gray-400">
+              <Award size={32} className="mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Belum ada pelanggan yang siap redeem</p>
+            </div>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+};
+
 // ---------- DATA INFO ----------
 const DataInfo = () => {
   return (
@@ -526,9 +881,9 @@ const DataInfo = () => {
         Data tersimpan otomatis di server Google secara Real-time.
       </p>
       <div className="bg-gray-50 p-4 rounded-xl text-left text-xs text-gray-500 mt-4 space-y-2">
-        <p>✅ Tidak perlu backup manual.</p>
-        <p>✅ Bisa diakses dari HP lain dengan akun yang sama.</p>
-        <p>✅ Data aman meskipun ganti HP.</p>
+        <p>Tidak perlu backup manual.</p>
+        <p>Bisa diakses dari HP lain dengan akun yang sama.</p>
+        <p>Data aman meskipun ganti HP.</p>
       </div>
     </Card>
   );

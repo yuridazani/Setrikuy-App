@@ -8,17 +8,68 @@ export const api = {
   // --- LAYANAN ---
   services: {
     add: async (data) => await addDoc(collection(db, 'services'), data),
-    delete: async (id) => await deleteDoc(doc(db, 'services', id)),
     update: async (id, data) => await updateDoc(doc(db, 'services', id), data),
+    delete: async (id) => await deleteDoc(doc(db, 'services', id)),
   },
 
   // --- PELANGGAN ---
   customers: {
     add: async (data) => {
-      const docRef = await addDoc(collection(db, 'customers'), data);
+      const docRef = await addDoc(collection(db, 'customers'), {
+        ...data,
+        stamps: 0,
+        totalStamps: 0,
+        rewardHistory: [],
+        createdAt: new Date().toISOString(),
+      });
       return docRef.id;
     },
     update: async (id, data) => await updateDoc(doc(db, 'customers', id), data),
+    delete: async (id) => await deleteDoc(doc(db, 'customers', id)),
+    get: async (id) => {
+      const docRef = doc(db, 'customers', id);
+      const docSnap = await getDoc(docRef);
+      return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
+    },
+
+    // ⭐ STAMP & REWARD
+    addStamp: async (id, count) => {
+      const docRef = doc(db, 'customers', id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        const currentStamps = (data.stamps || 0) + count;
+        const totalStamps = (data.totalStamps || 0) + count;
+        await updateDoc(docRef, { 
+          stamps: currentStamps, 
+          totalStamps: totalStamps 
+        });
+        return currentStamps;
+      }
+      return 0;
+    },
+
+    redeemReward: async (id, rewardName, rewardValue) => {
+      const docRef = doc(db, 'customers', id);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data();
+        const history = data.rewardHistory || [];
+        history.push({ 
+          name: rewardName, 
+          value: rewardValue,
+          date: new Date().toISOString(),
+          redeemedBy: 'kasir' // bisa ditambah username kasir nanti
+        });
+
+        await updateDoc(docRef, { 
+          stamps: 0, // reset stamps ke 0 setelah redeem
+          rewardHistory: history 
+        });
+        return true;
+      }
+      return false;
+    }
   },
 
   // --- ORDER ---
@@ -32,6 +83,7 @@ export const api = {
       return docRef.id;
     },
     update: async (id, data) => await updateDoc(doc(db, 'orders', id), data),
+    delete: async (id) => await deleteDoc(doc(db, 'orders', id)),
     get: async (id) => {
       const docRef = doc(db, 'orders', id);
       const docSnap = await getDoc(docRef);
@@ -41,7 +93,6 @@ export const api = {
       const snapshot = await getDocs(collection(db, 'orders'));
       return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     },
-    delete: async (id) => await deleteDoc(doc(db, 'orders', id)),
   },
 
   // --- PENGATURAN ---
@@ -64,8 +115,8 @@ export const api = {
   // --- PROMO (CRUD) ---
   promos: {
     add: async (data) => await addDoc(collection(db, 'promos'), data),
-    delete: async (id) => await deleteDoc(doc(db, 'promos', id)),
     update: async (id, data) => await updateDoc(doc(db, 'promos', id), data),
+    delete: async (id) => await deleteDoc(doc(db, 'promos', id)),
     getAll: async () => {
       const snapshot = await getDocs(collection(db, 'promos'));
       return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));

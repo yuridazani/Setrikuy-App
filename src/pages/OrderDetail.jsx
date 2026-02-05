@@ -16,6 +16,7 @@ import {
   Save,
   User,
   History,
+  Gift,
 } from 'lucide-react';
 import { format, parseISO, addHours } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -186,7 +187,7 @@ ${order.discount > 0 ? formatLine('DISKON', `-${rp(order.discount)}`) : ''}
 ${formatLine('TOTAL TAGIHAN', rp(order.total))}
 ${dash}
 ${paymentDetails}
-${order.damageNote ? `\n${dash}\n⚠️ CATATAN KERUSAKAN:\n${order.damageNote}\n` : ''}
+${order.damageNote ? `\n${dash}\nCATATAN KERUSAKAN:\n${order.damageNote}\n` : ''}
 ${dash}
 
 ${center('SYARAT & KETENTUAN:')}
@@ -226,18 +227,37 @@ ${center('TERIMA KASIH')}
         msg = `Halo ${name}! Orderanmu sudah kami terima dgn nota *${order.invoiceNumber}*. Total: *${formatRupiah(order.total)}*. Estimasi selesai: ${estimation}. Terima kasih!`;
         break;
       case 'proses':
-        msg = `Halo ${name}! Cucianmu sedang kami proses ya 😊. Akan kami kabari jika sudah selesai. (${store})`;
+        msg = `Halo ${name}! Cucianmu sedang kami proses ya. Akan kami kabari jika sudah selesai. (${store})`;
         break;
       case 'selesai':
-        msg = `Halo ${name}! 🎉 Cucianmu sudah *SELESAI* & wangi ✨. Silakan diambil ya! Total: *${formatRupiah(order.total)}*.`;
+        msg = `Halo ${name}! Cucianmu sudah *SELESAI* & wangi. Silakan diambil ya! Total: *${formatRupiah(order.total)}*.`;
         break;
       case 'ambil':
-        msg = `Halo ${name}! Terima kasih sudah mengambil cucian 🙌. Semoga puas dengan hasil setrika kami!`;
+        msg = `Halo ${name}! Terima kasih sudah mengambil cucian. Semoga puas dengan hasil setrika kami!`;
         break;
     }
 
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
     setWaModalOpen(false);
+  };
+
+  // ================= SEND LOYALTY CARD LINK =================
+  const sendLoyaltyLink = () => {
+    const phone = order.customerPhone ? order.customerPhone.replace(/^0/, '62') : '';
+    if (!phone) {
+      toast.error('Nomor WhatsApp tidak tersedia');
+      return;
+    }
+    
+    const loyaltyLink = `${window.location.origin}/loyalty/${order.customerId}`;
+    const name = order.customerName || 'Kak';
+    const stamps = order.stamps || 0;
+    
+    const message = `Halo ${name}!\n\n*Cek Loyalty Card Kamu!*\n\nStamp Terkumpul: ${stamps}\n\nLink Card:\n${loyaltyLink}\n\nTerima kasih!`;
+    
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, '_blank');
+    toast.success('Link loyalty card dikirim!');
   };
 
   return (
@@ -416,6 +436,18 @@ ${center('TERIMA KASIH')}
                   <span>Diskon</span>
                   <span>- {formatRupiah(order.discount)}</span>
                 </div>
+              )}
+              {/* ✅ DELIVERY COST */}
+              {order.delivery?.cost > 0 && (
+                <div className="flex justify-between text-sm text-orange-600 font-bold">
+                  <span>Ongkir ({order.delivery?.distance}km)</span>
+                  <span>+ {formatRupiah(order.delivery.cost)}</span>
+                </div>
+              )}
+              {order.delivery?.type === 'delivery' && order.delivery?.distance && (
+                <p className="text-[10px] text-orange-500 flex items-center gap-1">
+                  Pengiriman ke alamat customer
+                </p>
               )}
               <div className="flex justify-between items-center pt-2">
                 <span className="font-bold text-lg">Total Bayar</span>
@@ -633,6 +665,24 @@ ${center('TERIMA KASIH')}
                     </p>
                   </div>
                 </button>
+
+                {/* ⭐ TAMBAH BUTTON INI UNTUK LOYALTY CARD */}
+                <div className="border-t border-gray-200 pt-3 mt-2">
+                  <button
+                    onClick={sendLoyaltyLink}
+                    className="w-full p-4 bg-gradient-to-r from-orange-50 to-yellow-50 hover:from-orange-100 hover:to-yellow-100 border border-orange-200 rounded-xl text-left flex items-center gap-3 transition-colors"
+                  >
+                    <div className="bg-orange-200 text-orange-700 p-2 rounded-full">
+                      <Gift size={18} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-orange-900">Kirim Loyalty Card</p>
+                      <p className="text-[10px] text-orange-700">
+                        Link kartu member & stamp
+                      </p>
+                    </div>
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

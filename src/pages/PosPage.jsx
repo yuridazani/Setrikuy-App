@@ -17,6 +17,15 @@ import {
   TicketPercent,
   Check,
   ChevronRight,
+  Truck,
+  Home,
+  Clock,
+  Turtle,
+  Zap,
+  Rocket,
+  Gift,
+  Copy,
+  Award,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -46,6 +55,16 @@ const PosPage = () => {
   const [selectedPromo, setSelectedPromo] = useState(null);
   const [notes, setNotes] = useState('');
 
+  // ✅ DELIVERY SYSTEM
+  const [deliveryType, setDeliveryType] = useState('dropoff'); // 'dropoff' or 'delivery'
+  const [deliveryDistance, setDeliveryDistance] = useState('0');
+  const [deliveryPresets] = useState([
+    { label: 'Dekat (0-3km)', distance: 1.5 },
+    { label: 'Sedang (3-5km)', distance: 4 },
+    { label: 'Jauh (5-7km)', distance: 6 },
+    { label: 'Custom', distance: null },
+  ]);
+
   // PAYMENT
   const [isPaymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
@@ -57,6 +76,12 @@ const PosPage = () => {
     walletName: '',
     refNumber: '',
   });
+
+  // ✅ SERVICE CATEGORY SELECTOR
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const categories = [
+    ...new Set(services?.map((s) => s.name.split(' - ')[0])),
+  ];
 
   // ================= CART LOGIC =================
   const addToCart = (service) => {
@@ -132,7 +157,28 @@ const PosPage = () => {
   };
 
   const promoDiscount = selectedPromo ? calculateDiscount(selectedPromo) : 0;
-  const finalTotal = Math.max(0, subtotal - promoDiscount);
+
+  // ✅ DELIVERY COST CALCULATION
+  const calculateDelivery = () => {
+    if (deliveryType === 'dropoff') return 0;
+    const distance = parseFloat(deliveryDistance) || 0;
+    if (distance <= 3) return 5000;
+    return 5000 + (distance - 3) * 2000;
+  };
+
+  const deliveryCost = calculateDelivery();
+  const finalTotal = Math.max(0, subtotal - promoDiscount + deliveryCost);
+
+  // ✅ ESTIMASI DISPLAY - GET LONGEST DURATION
+  const getEstimasi = () => {
+    if (cart.length === 0) return 'N/A';
+    const estimasi = cart.map((item) => {
+      const duration = parseInt(item.duration) || 0;
+      return duration;
+    });
+    const maxDuration = Math.max(...estimasi);
+    return maxDuration > 0 ? `~${maxDuration} Jam` : 'N/A';
+  };
 
   // ================= FLOW =================
   const openPaymentModal = () => {
@@ -141,6 +187,10 @@ const PosPage = () => {
       toast.warning('Pilih pelanggan dulu!');
       setCustomerModalOpen(true);
       return;
+    }
+    // ✅ DELIVERY VALIDATION
+    if (deliveryType === 'delivery' && finalTotal < 15000) {
+      return toast.error('Minimal Rp15.000 untuk delivery!');
     }
     setPaymentModalOpen(true);
     setCashAmount('');
@@ -182,6 +232,12 @@ const PosPage = () => {
               type: 'manual',
             }
           : null,
+        // ✅ DELIVERY INFO
+        delivery: {
+          type: deliveryType,
+          distance: deliveryType === 'delivery' ? parseFloat(deliveryDistance) : 0,
+          cost: deliveryCost,
+        },
         total: finalTotal,
         notes,
         date: new Date().toISOString(),
@@ -196,10 +252,61 @@ const PosPage = () => {
         paymentStatus: status,
       });
 
-      toast.success(
-        status === 'paid'
-          ? 'LUNAS! Transaksi disimpan.'
-          : 'Disimpan! Menunggu pembayaran.'
+      // ================= ⭐ LOYALTY STAMP =================
+      const loyaltyConfig = settings?.find((s) => s.id === 'main')?.loyalty_config;
+      let stampsEarned = 0;
+      let newStampTotal = selectedCustomer?.stamps || 0;
+
+      if (loyaltyConfig?.isActive && selectedCustomer) {
+        stampsEarned = Math.floor(finalTotal / (loyaltyConfig.minTrxPerStamp || 20000));
+        if (stampsEarned > 0) {
+          newStampTotal = await api.customers.addStamp(selectedCustomer.id, stampsEarned);
+        }
+      }
+
+      // ================= ✅ SUCCESS TOAST =================
+      const maxStamps = loyaltyConfig?.maxStamps || 10;
+      const loyaltyLink = `${window.location.origin}/loyalty/${selectedCustomer?.id}`;
+      
+      toast.custom(
+        (t) => (
+          <div className="bg-white p-5 rounded-2xl shadow-2xl border-2 border-primary max-w-sm">
+            <p className="font-black text-primary text-lg mb-3">TRANSAKSI BERHASIL!</p>
+            <div className="space-y-2 text-sm">
+              <p className="font-bold flex items-center gap-2">
+                <Wallet size={18} className="text-primary" />
+                Total: {formatRupiah(finalTotal)}
+              </p>
+              {stampsEarned > 0 && (
+                <>
+                  <div className="bg-orange-50 p-3 rounded-lg border border-orange-200">
+                    <p className="text-xs font-bold text-orange-700 mb-1 flex items-center gap-1">
+                      <Gift size={14} /> +{stampsEarned} STAMPS!
+                    </p>
+                    <p className="text-[10px] text-orange-600 mb-2">
+                      Total: {newStampTotal}/{maxStamps}
+                    </p>
+                    {newStampTotal >= maxStamps && (
+                      <p className="text-[10px] font-black text-orange-700">
+                        ⭐ BISA TUKAR HADIAH! ⭐
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(loyaltyLink);
+                      toast.success('Link loyalty copied!');
+                    }}
+                    className="w-full text-[10px] bg-gray-100 hover:bg-gray-200 p-2 rounded font-bold transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Copy size={12} /> Copy Link Loyalty Card
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        ),
+        { duration: 5000 }
       );
 
       setCart([]);
@@ -207,6 +314,8 @@ const PosPage = () => {
       setSelectedPromo(null);
       setNotes('');
       setUseMinWeight(true);
+      setDeliveryType('dropoff');
+      setDeliveryDistance('0');
       setSummaryOpen(false);
       setPaymentModalOpen(false);
     } catch (error) {
@@ -219,13 +328,19 @@ const PosPage = () => {
     <div className="p-6 pb-32 animate-slide-up space-y-6">
       {/* ================= HEADER ================= */}
       <div className="flex items-center justify-between">
-        <div onClick={() => setCustomerModalOpen(true)} className="cursor-pointer">
+        <div onClick={() => setCustomerModalOpen(true)} className="cursor-pointer flex-1">
           <p className="text-xs text-text-muted font-bold uppercase mb-1">
             Pelanggan
           </p>
           {selectedCustomer ? (
             <div className="bg-primary/10 text-primary px-4 py-2 rounded-xl font-bold flex items-center gap-2 text-sm">
-              <User size={16} /> {selectedCustomer.name}
+              <User size={16} /> 
+              <div className="flex-1 min-w-0">
+                <p className="truncate">{selectedCustomer.name}</p>
+                <p className="text-[10px] opacity-75 flex items-center gap-1">
+                  <Award size={12} /> {selectedCustomer.stamps || 0}/10 Stamps
+                </p>
+              </div>
             </div>
           ) : (
             <div className="bg-gray-100 text-gray-400 px-4 py-2 rounded-xl font-bold flex items-center gap-2 text-sm hover:bg-gray-200 transition-colors">
@@ -239,26 +354,64 @@ const PosPage = () => {
         </div>
       </div>
 
-      {/* ================= SERVICE GRID ================= */}
-      <div className="grid grid-cols-1 gap-3">
-        {services?.map((service) => (
-          <motion.div whileTap={{ scale: 0.98 }} key={service.id}>
-            <Card
-              className="p-4 flex items-center justify-between cursor-pointer border-2 border-transparent hover:border-primary/20 active:bg-gray-50 transition-all"
-              onClick={() => addToCart(service)}
+      {/* ================= 🔥 SERVICE SELECTOR ================= */}
+      <div className="space-y-4">
+        {/* CATEGORY TABS */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-4 py-2 rounded-full text-sm font-bold whitespace-nowrap border-2 transition-all ${
+                selectedCategory === cat
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-gray-400 border-gray-100'
+              }`}
             >
-              <div>
-                <h3 className="font-bold text-text-main">{service.name}</h3>
-                <p className="text-xs text-text-muted font-medium mt-0.5">
-                  {service.duration} Jam • {service.type}
-                </p>
-              </div>
-              <span className="block font-black text-primary">
-                {formatRupiah(service.price).replace(',00', '')}
-              </span>
-            </Card>
-          </motion.div>
-        ))}
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* SUB SERVICES */}
+        <div className="grid grid-cols-1 gap-3">
+          {services
+            ?.filter((s) =>
+              selectedCategory
+                ? s.name.startsWith(selectedCategory)
+                : true
+            )
+            .map((service) => (
+              <motion.div whileTap={{ scale: 0.97 }} key={service.id}>
+                <Card
+                  onClick={() => addToCart(service)}
+                  className="p-4 flex justify-between items-center active:scale-95 transition-all border-l-8 border-l-primary cursor-pointer hover:bg-gray-50"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      {service.name.includes('SANTUY') && (
+                        <Turtle size={20} className="text-orange-600" />
+                      )}
+                      {service.name.includes('SATSET') && (
+                        <Zap size={20} className="text-yellow-500" />
+                      )}
+                      {service.name.includes('WUSHHH') && (
+                        <Rocket size={20} className="text-red-500" />
+                      )}
+                      <h4 className="font-black text-gray-800">
+                        {service.name.split(' - ')[1] || service.name}
+                      </h4>
+                    </div>
+                    <p className="text-xs text-gray-400 font-bold mt-0.5">
+                      {service.duration} JAM •{' '}
+                      {formatRupiah(service.price).replace(',00', '')}
+                    </p>
+                  </div>
+                  <ChevronRight className="text-gray-300" />
+                </Card>
+              </motion.div>
+            ))}
+        </div>
       </div>
 
       {/* ================= FLOATING BAR ================= */}
@@ -295,7 +448,7 @@ const PosPage = () => {
         )}
       </AnimatePresence>
 
-      {/* ================= 🔥 SUMMARY MODAL (CENTERED) ================= */}
+      {/* ================= 🔥 SUMMARY MODAL ================= */}
       <AnimatePresence>
         {isSummaryOpen && (
           <motion.div
@@ -395,67 +548,140 @@ const PosPage = () => {
                 {/* PROMO & NOTES */}
                 <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
                   <div className="flex items-center justify-between text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
-                    <span>Promo & Catatan</span>
-                    {eligiblePromos.length > 0 && (
-                      <span className="text-green-600 bg-green-50 px-2 py-0.5 rounded-md">
-                        {eligiblePromos.length} Tersedia
-                      </span>
-                    )}
+                    <span>Pengiriman & Promo</span>
                   </div>
 
-                  {eligiblePromos.length > 0 ? (
-                    <div className="space-y-2">
-                      {eligiblePromos.map((promo) => {
-                        const discount = calculateDiscount(promo);
-                        const isSelected = selectedPromo?.id === promo.id;
-                        return (
+                  {/* ✅ DELIVERY SELECTOR */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-gray-600">Pilihan Pengiriman</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setDeliveryType('dropoff')}
+                        className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                          deliveryType === 'dropoff'
+                            ? 'bg-blue-50 border-blue-500 text-blue-700'
+                            : 'bg-white border-gray-200 text-gray-600'
+                        }`}
+                      >
+                        <Home size={16} /> Drop-off
+                      </button>
+                      <button
+                        onClick={() => setDeliveryType('delivery')}
+                        className={`p-3 rounded-xl border-2 font-bold text-sm flex items-center justify-center gap-2 transition-all ${
+                          deliveryType === 'delivery'
+                            ? 'bg-orange-50 border-orange-500 text-orange-700'
+                            : 'bg-white border-gray-200 text-gray-600'
+                        }`}
+                      >
+                        <Truck size={16} /> Delivery
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* DELIVERY DISTANCE */}
+                  {deliveryType === 'delivery' && (
+                    <div className="space-y-2 bg-orange-50 p-3 rounded-xl border border-orange-200">
+                      <p className="text-xs font-bold text-orange-700">Jarak Pengiriman</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {deliveryPresets.map((preset, idx) => (
                           <button
-                            key={promo.id}
-                            onClick={() =>
-                              setSelectedPromo(isSelected ? null : promo)
-                            }
-                            className={`w-full flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${
-                              isSelected
-                                ? 'bg-green-50 border-green-500 text-green-700'
-                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-green-300'
+                            key={idx}
+                            onClick={() => {
+                              if (preset.distance) {
+                                setDeliveryDistance(preset.distance.toString());
+                              }
+                            }}
+                            className={`p-2 rounded-lg text-xs font-bold border transition-all ${
+                              deliveryDistance === preset.distance?.toString()
+                                ? 'bg-orange-500 text-white border-orange-500'
+                                : 'bg-white border-orange-200 text-orange-600 hover:bg-orange-100'
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                                  isSelected
-                                    ? 'border-green-500 bg-green-500'
-                                    : 'border-gray-300'
-                                }`}
-                              >
-                                {isSelected && (
-                                  <Check
-                                    size={12}
-                                    className="text-white"
-                                    strokeWidth={3}
-                                  />
-                                )}
-                              </div>
-                              <span>{promo.name}</span>
-                            </div>
-                            <span>
-                              -{formatRupiah(discount).replace(',00', '')}
-                            </span>
+                            {preset.label}
                           </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 px-3 bg-gray-50 rounded-xl border border-gray-200">
-                      <TicketPercent
-                        size={24}
-                        className="mx-auto mb-2 text-gray-400"
+                        ))}
+                      </div>
+                      <input
+                        type="number"
+                        placeholder="Jarak (km)"
+                        value={deliveryDistance}
+                        onChange={(e) => setDeliveryDistance(e.target.value)}
+                        className="w-full p-2 text-sm bg-white border border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
                       />
-                      <p className="text-xs text-gray-500">
-                        Belum ada promo yang memenuhi syarat
+                      <p className="text-[10px] text-orange-600 flex items-center gap-1">
+                        <Wallet size={12} /> Ongkir: {formatRupiah(deliveryCost)}
                       </p>
                     </div>
                   )}
+
+                  {/* ✅ ESTIMASI DISPLAY */}
+                  <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 flex items-center gap-2">
+                    <Clock size={16} className="text-blue-600" />
+                    <div className="flex-1">
+                      <p className="text-[10px] font-bold text-blue-600">Estimasi Selesai</p>
+                      <p className="text-sm font-black text-blue-700">{getEstimasi()}</p>
+                    </div>
+                  </div>
+
+                  {/* PROMO */}
+                  <div className="space-y-2 border-t border-gray-100 pt-3">
+                    {eligiblePromos.length > 0 ? (
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-gray-600">
+                          Promo Tersedia: {eligiblePromos.length}
+                        </p>
+                        {eligiblePromos.map((promo) => {
+                          const discount = calculateDiscount(promo);
+                          const isSelected = selectedPromo?.id === promo.id;
+                          return (
+                            <button
+                              key={promo.id}
+                              onClick={() =>
+                                setSelectedPromo(isSelected ? null : promo)
+                              }
+                              className={`w-full flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${
+                                isSelected
+                                  ? 'bg-green-50 border-green-500 text-green-700'
+                                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-green-300'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                    isSelected
+                                      ? 'border-green-500 bg-green-500'
+                                      : 'border-gray-300'
+                                  }`}
+                                >
+                                  {isSelected && (
+                                    <Check
+                                      size={12}
+                                      className="text-white"
+                                      strokeWidth={3}
+                                    />
+                                  )}
+                                </div>
+                                <span>{promo.name}</span>
+                              </div>
+                              <span>
+                                -{formatRupiah(discount).replace(',00', '')}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-3 px-3 bg-gray-50 rounded-xl border border-gray-200">
+                        <TicketPercent
+                          size={20}
+                          className="mx-auto mb-1 text-gray-400"
+                        />
+                        <p className="text-xs text-gray-500">
+                          Belum ada promo yang memenuhi syarat
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   <textarea
                     value={notes}
@@ -480,6 +706,12 @@ const PosPage = () => {
                       <span>-{formatRupiah(promoDiscount)}</span>
                     </div>
                   )}
+                  {deliveryCost > 0 && (
+                    <div className="flex justify-between text-sm text-orange-600 font-medium">
+                      <span>Ongkir</span>
+                      <span>+{formatRupiah(deliveryCost)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-end pt-2 border-t border-dashed border-gray-200 mt-2">
                     <span className="font-bold text-gray-800">
                       Total Bayar
@@ -502,7 +734,7 @@ const PosPage = () => {
         )}
       </AnimatePresence>
 
-      {/* ================= 🔥 PAYMENT MODAL (CENTERED) ================= */}
+      {/* ================= 🔥 PAYMENT MODAL ================= */}
       <AnimatePresence>
         {isPaymentModalOpen && (
           <motion.div

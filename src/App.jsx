@@ -11,6 +11,7 @@ import OrderDetail from '@/pages/OrderDetail';
 import Reports from '@/pages/Reports';
 import Settings from '@/pages/Settings';
 import Login from '@/pages/Login';
+import LoyaltyView from '@/pages/LoyaltyView';
 
 /* ======================= BOTTOM NAV ======================= */
 const BottomNav = () => {
@@ -88,6 +89,8 @@ function App() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Login />} />
+        {/* ⭐ LOYALTY CARD - PUBLIC (tanpa auth) */}
+        <Route path="/loyalty/:custId" element={<LoyaltyView />} />
 
         {/* Protected */}
         <Route path="/" element={<PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>} />

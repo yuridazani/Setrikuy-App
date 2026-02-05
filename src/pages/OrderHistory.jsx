@@ -3,20 +3,29 @@ import { useRealtime } from '@/lib/hooks';
 import { api } from '@/lib/db';
 import { Card } from '@/components/ui/Cards';
 import { formatRupiah } from '@/lib/utils';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isWithinInterval, startOfDay, endOfDay, subDays } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import { Search, Trash2 } from 'lucide-react';
+import { Search, Trash2, Calendar } from 'lucide-react';
 import { orderBy } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const STATUSES = ['all', 'antrian', 'proses', 'selesai', 'diambil', 'batal'];
+const DATE_FILTERS = [
+  { label: 'Hari Ini', days: 0 },
+  { label: 'Kemarin', days: 1 },
+  { label: '7 Hari', days: 7 },
+  { label: '30 Hari', days: 30 },
+];
+const PAYMENT_FILTERS = ['all', 'paid', 'pending'];
 
 const OrderHistory = () => {
   const orders = useRealtime('orders', [orderBy('date', 'desc')]);
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState(0);
+  const [paymentFilter, setPaymentFilter] = useState('all');
 
   // DELETE ORDER
   const handleDelete = async (e, orderId) => {
@@ -32,21 +41,32 @@ const OrderHistory = () => {
     }
   };
 
-  // FILTER: SEARCH + STATUS
+  // FILTER: SEARCH + STATUS + DATE + PAYMENT
   const filteredOrders = orders.filter(order => {
     const term = searchTerm.toLowerCase();
     const matchSearch =
       (order.invoiceNumber?.toLowerCase() || '').includes(term) ||
       (order.customerName?.toLowerCase() || '').includes(term);
     const matchStatus = statusFilter === 'all' || order.status === statusFilter;
-    return matchSearch && matchStatus;
+    
+    // Date filter
+    const orderDate = parseISO(order.date);
+    const startDate = startOfDay(subDays(new Date(), dateFilter));
+    const endDate = endOfDay(new Date());
+    const matchDate = isWithinInterval(orderDate, { start: startDate, end: endDate });
+    
+    // Payment filter
+    const paymentStatus = order.payment?.status || order.paymentStatus || 'pending';
+    const matchPayment = paymentFilter === 'all' || paymentStatus === paymentFilter;
+    
+    return matchSearch && matchStatus && matchDate && matchPayment;
   });
 
   return (
     <div className="p-6 pb-32 animate-slide-up space-y-6">
       <h1 className="text-2xl font-extrabold text-text-main">Riwayat Order</h1>
 
-      {/* SEARCH + STATUS FILTER */}
+      {/* SEARCH + STATUS + DATE + PAYMENT FILTER */}
       <div className="space-y-3 sticky top-0 z-20 bg-background/95 backdrop-blur-sm py-2">
         
         {/* SEARCH */}
@@ -69,21 +89,58 @@ const OrderHistory = () => {
           )}
         </div>
 
-        {/* STATUS TABS */}
+        {/* DATE FILTER */}
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-          {STATUSES.map(status => (
+          {DATE_FILTERS.map(df => (
             <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold capitalize whitespace-nowrap transition-all border ${
-                statusFilter === status
-                  ? 'bg-primary text-white border-primary shadow-md'
-                  : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+              key={df.days}
+              onClick={() => setDateFilter(df.days)}
+              className={`px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all border flex items-center gap-1 ${
+                dateFilter === df.days
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
               }`}
             >
-              {status === 'all' ? 'Semua' : status}
+              <Calendar size={14} />
+              {df.label}
             </button>
           ))}
+        </div>
+
+        {/* STATUS + PAYMENT TABS */}
+        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+          <div className="flex gap-2">
+            {STATUSES.map(status => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-3 py-2 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all border ${
+                  statusFilter === status
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {status === 'all' ? 'Status' : status}
+              </button>
+            ))}
+          </div>
+
+          {/* Payment Filter */}
+          <div className="flex gap-2 border-l-2 border-gray-200 pl-2">
+            {PAYMENT_FILTERS.map(pf => (
+              <button
+                key={pf}
+                onClick={() => setPaymentFilter(pf)}
+                className={`px-3 py-2 rounded-lg text-xs font-bold capitalize whitespace-nowrap transition-all border ${
+                  paymentFilter === pf
+                    ? 'bg-green-500 text-white border-green-600'
+                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {pf === 'all' ? 'Bayar' : pf === 'paid' ? 'Lunas' : 'Pending'}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
